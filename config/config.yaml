@@ -1,0 +1,28 @@
+app:
+  name: AI Researcher
+  version: 1.5.0
+
+research:
+  max_papers_per_topic: 100
+  max_topics: 50
+  supported_file_types:
+    - pdf
+    - txt
+    - doc
+    - docx
+
+storage:
+  data_dir: "../data"
+  cache_dir: "../.cache"
+  max_cache_size_mb: 1000
+
+logging:
+  level: INFO
+  file: "../logs/researcher.log"
+  max_file_size_mb: 10
+  backup_count: 5
+
+api:
+  timeout_seconds: 30
+  max_retries: 3
+  retry_delay_seconds: 1
