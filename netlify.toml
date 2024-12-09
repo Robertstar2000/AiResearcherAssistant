@@ -5,8 +5,9 @@
 
 [build.environment]
   NODE_VERSION = "18"
-  NPM_FLAGS = "--legacy-peer-deps"
+  NPM_FLAGS = "--legacy-peer-deps --force"
   CI = "false"
+  NETLIFY_USE_YARN = "false"
 
 [dev]
   command = "npm run dev"
