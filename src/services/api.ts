@@ -7,19 +7,18 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_KEY
 
 // Debug environment variables
-console.log('Environment Variables in api.ts:', {
-  VITE_SUPABASE_URL: supabaseUrl,
-  VITE_SUPABASE_KEY: supabaseKey,
-  VITE_GROQ_API_KEY: import.meta.env.VITE_GROQ_API_KEY
-})
+console.log('Environment Variables Check:')
+console.log('VITE_SUPABASE_URL exists:', !!supabaseUrl)
+console.log('VITE_SUPABASE_KEY exists:', !!supabaseKey)
+console.log('VITE_SUPABASE_URL value:', supabaseUrl)
+console.log('VITE_SUPABASE_KEY value:', supabaseKey?.substring(0, 5) + '...')
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing Supabase environment variables:')
-  console.error('SUPABASE_URL exists:', !!supabaseUrl)
-  console.error('SUPABASE_KEY exists:', !!supabaseKey)
-  console.error('SUPABASE_URL value:', supabaseUrl)
-  console.error('SUPABASE_KEY value:', supabaseKey)
-  throw new Error('Missing Supabase environment variables. Please check your .env file.')
+  console.error('Missing Supabase environment variables. Please check your Netlify environment settings.')
+  throw new ResearchException(
+    ResearchError.CONFIGURATION_ERROR,
+    'Application configuration error. Please contact support.'
+  )
 }
 
 // Initialize Supabase client with additional options
