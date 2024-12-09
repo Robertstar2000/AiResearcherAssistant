@@ -2,34 +2,16 @@ import { useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import {
   Box,
-  Button,
-  Container,
   Typography,
+  Container,
   Grid,
-  Card,
-  CardContent,
-  CardActions,
-  TextField,
-  Divider,
-  Paper,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  Alert,
-  AlertTitle,
+  Paper
 } from '@mui/material'
 import {
   Search as SearchIcon,
   AutoStories as AutoStoriesIcon,
-  Science as ScienceIcon,
-  Description as DescriptionIcon,
-  School as SchoolIcon,
-  FormatQuote as FormatQuoteIcon,
-  Psychology as PsychologyIcon,
   MenuBook as MenuBookIcon,
-  RocketLaunch as RocketLaunchIcon,
-  CheckCircle as CheckCircleIcon
+  FormatQuote as FormatQuoteIcon,
 } from '@mui/icons-material'
 import Picture5 from '../assets/Picture5.png'
 
@@ -188,17 +170,17 @@ const LandingPage = () => {
                 }
               }}
             >
-              <ListItem disablePadding sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                <ListItemIcon sx={{ minWidth: 'auto', mb: 1, color: 'primary.main' }}>
+              <Box sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                <Box sx={{ minWidth: 'auto', mb: 1, color: 'primary.main' }}>
                   {feature.icon}
-                </ListItemIcon>
+                </Box>
                 <Typography variant="subtitle1" sx={{ mb: 1, fontSize: '0.9rem', fontWeight: 'bold' }}>
                   {feature.title}
                 </Typography>
                 <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>
                   {feature.description}
                 </Typography>
-              </ListItem>
+              </Box>
             </Paper>
           </Grid>
         ))}
@@ -224,14 +206,16 @@ const LandingPage = () => {
       </Paper>
 
       {/* Important Notice */}
-      <Alert severity="info" sx={{ mb: 4 }}>
-        <AlertTitle>Important Notice</AlertTitle>
+      <Box sx={{ mb: 4 }}>
+        <Box sx={{ mb: 1 }}>
+          Important Notice
+        </Box>
         <Typography variant="body2">
           This AI assistant is provided to enhance your research capabilities. While powerful, 
           it's important to verify all generated content. AIs can be subject to errors or 
           hallucinations. Always review and validate the output before use.
         </Typography>
-      </Alert>
+      </Box>
 
       {/* Copyright Footer */}
       <Box sx={{ textAlign: 'center', mt: 4, color: 'text.secondary', fontSize: '0.875rem' }}>

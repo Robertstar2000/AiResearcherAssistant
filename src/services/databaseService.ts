@@ -1,16 +1,14 @@
-import { supabase } from './api'
-
 // Types for research data
 export interface ResearchEntry {
-  id: bigint
-  created_at: string
-  'User-Name': string
-  'PassWord': string
-  Occupation: string
-  Location: string
-  title: string
-  content: any
-  references: string
+  id: string;
+  created_at: string;
+  'User-Name': string;
+  'PassWord': string;
+  Occupation: string;
+  Location: string;
+  title: string;
+  content: any;
+  references: string;
 }
 
 interface Section {
@@ -32,6 +30,15 @@ interface ResearchEntryData {
   created_at?: string;
   updated_at?: string;
 }
+
+interface ResearchPayload {
+  title: string;
+  content: string;
+  userId: string;
+  [key: string]: any;
+}
+
+import { supabase } from './api';
 
 // Initialize real-time subscription
 export const initializeRealtimeSubscription = (onUpdate: (payload: any) => void) => {
@@ -198,7 +205,7 @@ export const getResearchEntries = async (userName: string) => {
 }
 
 export const updateResearchEntry = async (
-  id: bigint,
+  id: string,
   updates: Partial<Omit<ResearchEntry, 'id' | 'created_at'>>
 ) => {
   try {
@@ -221,7 +228,7 @@ export const updateResearchEntry = async (
   }
 }
 
-export const deleteResearchEntry = async (id: bigint) => {
+export const deleteResearchEntry = async (id: string) => {
   try {
     const { error } = await supabase
       .from('AiResearcherAssistant')
@@ -237,3 +244,18 @@ export const deleteResearchEntry = async (id: bigint) => {
     throw error
   }
 }
+
+export const saveResearch = async (payload: ResearchPayload): Promise<{ id: string }> => {
+  try {
+    const { data, error } = await supabase
+      .from('research')
+      .insert([payload])
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    return { id: data.id };
+  } catch (error) {
+    throw new Error(`Failed to save research: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};

@@ -46,3 +46,37 @@ export const validateOutlineStructure = (
 
   return { isValid: true };
 };
+
+export interface OutlineSection {
+    number: string;
+    title: string;
+    isSubsection: boolean;
+}
+
+export function parseDetailedOutline(outline: string): OutlineSection[] {
+    const lines = outline.split('\n').filter(line => line.trim());
+    const sections: OutlineSection[] = [];
+
+    for (const line of lines) {
+        const match = line.match(/^(\d+(?:\.\d+)*)\s+(.+)$/);
+        if (match) {
+            const [, number, title] = match;
+            sections.push({
+                number,
+                title: title.trim(),
+                isSubsection: number.includes('.')
+            });
+        }
+    }
+
+    return sections;
+}
+
+export function validateOutline(outline: string): boolean {
+    try {
+        const sections = parseDetailedOutline(outline);
+        return sections.length > 0;
+    } catch {
+        return false;
+    }
+}

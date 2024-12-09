@@ -4,12 +4,17 @@ import { Menu as MenuIcon, ExitToApp as ExitToAppIcon } from '@mui/icons-materia
 import { useSelector } from 'react-redux'
 import { RootState } from '../store'
 import { signOut } from '../services/authService'
+import { AuthUser } from '../store/slices/authSlice'
 
-const Layout = () => {
+interface LayoutProps {
+  children?: React.ReactNode
+}
+
+const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation()
   const navigate = useNavigate()
   const isAuthenticated = useSelector((state: RootState) => state.auth.isAuthenticated)
-  const user = useSelector((state: RootState) => state.auth.user)
+  const user = useSelector((state: RootState) => state.auth.user) as AuthUser | null
 
   const handleLogout = async () => {
     try {
@@ -72,7 +77,7 @@ const Layout = () => {
       </AppBar>
 
       <Container component="main" sx={{ flexGrow: 1, py: 3 }}>
-        <Outlet />
+        {children || <Outlet />}
       </Container>
 
       <Box 

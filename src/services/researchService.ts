@@ -1,11 +1,5 @@
-import { 
-  generateSection, 
-  generateReferences, 
-  generateDetailedOutline,
-  waitBetweenCalls as apiWaitBetweenCalls
-} from './api';
-
-import { ResearchMode, ResearchType, CitationStyle, ResearchSection } from '../store/slices/researchSlice'
+import { generateDetailedOutline, generateSection, generateReferences } from './api';
+import { ResearchError, ResearchException } from './researchErrors';
 
 interface OutlineItem {
   number: string;
@@ -15,143 +9,103 @@ interface OutlineItem {
 }
 
 interface ResearchResult {
-  sections: ResearchSection[];
+  sections: any[];
   references: string[];
   outline: string;
 }
 
-interface Section {
-  title: string;
-  content: string;
-  warning: string | null;
-}
+// Convert API sections to ResearchSections
+const convertToResearchSections = (sections: any[]): any[] => {
+  return sections.map((section, index) => ({
+    number: section.number || `${index + 1}`,
+    title: section.title,
+    content: section.content,
+    subsections: section.subsections ? convertToResearchSections(section.subsections) : undefined,
+    warning: section.warning,
+  }));
+};
 
 export async function generateResearch(
   topic: string,
-  mode: ResearchMode = ResearchMode.Basic,
-  type: ResearchType = ResearchType.Article,
-  citationStyle: CitationStyle = CitationStyle.APA,
   progressCallback: (progress: number, total: number, message: string) => void
 ): Promise<ResearchResult> {
-  let sections: Section[] = [];
+  let sections: any[] = [];
   let references: string[] = [];
   let outline: string = '';
   let consecutiveErrors = 0;
-  const MAX_CONSECUTIVE_ERRORS = 3;
 
-  console.log('Starting research generation:', { mode, topic, type });
-  
-  const isAdvancedMode = mode.toLowerCase() === 'advanced';
-  
   try {
-    // Step 1: Generate outline (10% of progress)
-    progressCallback(0, 100, 'Generating research outline...');
-    
-    if (!topic || !mode || type === undefined) {
-      throw new Error('Missing required parameters: topic, mode, and type are required');
-    }
-
-    console.log('Generating outline with params:', { topic, mode, type });
-    outline = await generateDetailedOutline(topic, mode, type);
+    // Generate detailed outline
+    progressCallback(10, 100, 'Generating research outline...');
+    outline = await generateDetailedOutline(topic);
     if (!outline) {
-      throw new Error('Failed to generate outline: No content received');
+      throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate outline');
     }
 
-    console.log('Generated outline:', outline);
-    progressCallback(10, 100, 'Outline generated. Analyzing structure...');
-
+    // Parse outline into sections
+    progressCallback(20, 100, 'Parsing outline structure...');
     const outlineItems = parseDetailedOutline(outline);
-    if (!outlineItems || outlineItems.length === 0) {
-      throw new Error('Failed to parse outline: No sections found');
+    if (!outlineItems.length) {
+      throw new ResearchException(ResearchError.PARSING_ERROR, 'Failed to parse outline');
     }
-    
-    // Process each section (90% of remaining progress)
-    const totalSections = outlineItems.length;
-    console.log(`Processing ${totalSections} sections in ${mode} mode...`);
-    
+
+    // Generate content for each section
+    let currentProgress = 20;
+    const progressPerSection = 60 / outlineItems.length;
+
     for (let i = 0; i < outlineItems.length; i++) {
       const item = outlineItems[i];
-      const sectionStartProgress = Math.floor(10 + ((i) / totalSections * 90));
-      
       try {
         progressCallback(
-          sectionStartProgress,
+          currentProgress,
           100,
-          `Generating section ${i + 1} of ${totalSections}: ${item.title}`
-        );
-        
-        console.log(`Generating section ${i + 1}/${totalSections}:`, item.title);
-        
-        const { content, warning } = await generateSection(
-          topic,
-          item.title,
-          citationStyle,
-          item.isSubsection
+          `Generating section ${i + 1} of ${outlineItems.length}: ${item.title}`
         );
 
-        sections.push({
-          title: item.title,
-          content,
-          warning: warning || null
-        });
-
-        // Calculate progress: 10% for outline + (current section / total sections * 90%)
-        const sectionProgress = Math.floor(10 + ((i + 1) / totalSections * 90));
-        progressCallback(
-          sectionProgress,
-          100,
-          `Completed section ${i + 1} of ${totalSections}: ${item.title}`
-        );
+        const section = await generateSection(topic, item.title, item.isSubsection);
+        section.number = item.number;
         
-        console.log(`Completed section ${i + 1}/${totalSections}:`, item.title);
+        // Add section to appropriate place in hierarchy
+        if (item.isSubsection) {
+          const parentNumber = item.number.split('.')[0];
+          const parentSection = sections.find(s => s.number === parentNumber);
+          if (parentSection) {
+            parentSection.subsections = parentSection.subsections || [];
+            parentSection.subsections.push(section);
+          }
+        } else {
+          sections.push(section);
+        }
+
         consecutiveErrors = 0;
+        currentProgress += progressPerSection;
       } catch (error) {
-        console.error(`Error generating section ${item.title}:`, error);
         consecutiveErrors++;
-        
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          throw new Error(`Failed to generate section after ${MAX_CONSECUTIVE_ERRORS} consecutive attempts`);
+        if (consecutiveErrors >= 3) {
+          throw new ResearchException(
+            ResearchError.GENERATION_ERROR,
+            'Multiple consecutive section generation failures'
+          );
         }
-        
-        sections.push({
-          title: item.title,
-          content: 'Error generating section content',
-          warning: error instanceof Error ? error.message : 'Unknown error'
-        });
-        
-        const sectionProgress = Math.floor(10 + ((i + 1) / totalSections * 90));
-        progressCallback(
-          sectionProgress,
-          100,
-          `Error in section ${i + 1} of ${totalSections}, continuing...`
-        );
-      }
-      
-      // Add a small delay between sections for rate limiting
-      if (i < outlineItems.length - 1) {
-        if (isAdvancedMode) {
-          // Longer delay for advanced mode due to complexity
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-        await apiWaitBetweenCalls();
+        console.error(`Error generating section ${item.title}:`, error);
       }
     }
 
     // Generate references
-    try {
-      progressCallback(95, 100, 'Generating references...');
-      references = await generateReferences(topic, citationStyle);
-      progressCallback(100, 100, 'Research generation complete!');
-      console.log('Research generation completed successfully');
-    } catch (error) {
-      console.error('Error generating references:', error);
-      references = ['Error generating references'];
+    progressCallback(80, 100, 'Generating references...');
+    references = await generateReferences(topic);
+    if (!references.length) {
+      throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate references');
     }
 
+    progressCallback(100, 100, 'Research generation complete!');
     return { sections, references, outline };
   } catch (error) {
-    console.error('Error in research generation:', error);
-    throw error;
+    if (error instanceof ResearchException) throw error;
+    throw new ResearchException(
+      ResearchError.GENERATION_ERROR,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };
 

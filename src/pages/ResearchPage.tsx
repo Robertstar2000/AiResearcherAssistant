@@ -1,31 +1,30 @@
-import { useState, useEffect } from 'react'
-import { useSelector, useDispatch } from 'react-redux'
+import { useState, useEffect } from 'react';
 import {
-  Box,
+  Button,
+  CircularProgress,
   Container,
+  Typography,
+  Box,
   Grid,
   Paper,
-  Typography,
   TextField,
-  Button,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
-  CircularProgress,
-  Alert,
-  IconButton,
-  Tooltip,
   LinearProgress,
   Dialog,
   DialogTitle,
   DialogContent,
-} from '@mui/material'
+  IconButton,
+  Tooltip,
+  Alert,
+  SelectChangeEvent
+} from '@mui/material';
 import {
   ResearchMode,
   ResearchType,
   CitationStyle,
-  ResearchSection,
   setTitle,
   setMode,
   setType,
@@ -35,66 +34,59 @@ import {
   setSections,
   setReferences,
   addToHistory,
-} from '../store/slices/researchSlice'
-import { RootState } from '../store'
-import { generateTitle, generateDetailedOutline } from '../services/api'
-import { generateResearch } from '../services/researchService'
-import { generateMarkup, generatePDF, generateDOCX, downloadDocument } from '../services/documentService';
-import { saveResearchEntry, initializeRealtimeSubscription } from '../services/databaseService'
+  ResearchSection
+} from '../store/slices/researchSlice';
+import { RootState } from '../store';
+import { useSelector, useDispatch } from 'react-redux';
+import { generateTitle } from '../services/api';
+import { generateResearch } from '../services/researchService';
+import { generatePdfDocument, generateWordDocument, downloadDocument } from '../services/documentService';
+import { initializeRealtimeSubscription } from '../services/databaseService';
 import { ResearchError, ResearchException } from '../services/researchErrors';
-import EditIcon from '@mui/icons-material/Edit'
-import CheckIcon from '@mui/icons-material/Check'
-import CloseIcon from '@mui/icons-material/Close'
-import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted'
-import DescriptionIcon from '@mui/icons-material/Description';
+import EditIcon from '@mui/icons-material/Edit';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
+import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import ArticleIcon from '@mui/icons-material/Article';
 
-interface Section {
-  number: string;
-  title: string;
-  content: string;
-  subsections?: Section[];
-}
-
-interface ProgressUpdate {
-  completed: number;
-  total: number;
+interface ProgressState {
+  progress: number;
   message: string;
 }
 
 const ResearchPage = () => {
-  const dispatch = useDispatch()
-  const research = useSelector((state: RootState) => state.research)
-  const user = useSelector((state: RootState) => state.auth.user)
+  const dispatch = useDispatch();
+  const research = useSelector((state: RootState) => state.research);
+  const user = useSelector((state: RootState) => state.auth.user);
   const [query, setQuery] = useState('')
   const [editingTitle, setEditingTitle] = useState(false)
   const [editedTitle, setEditedTitle] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [progress, setProgress] = useState<number>(0)
-  const [statusMessage, setStatusMessage] = useState<string>('')
-  const [totalSteps, setTotalSteps] = useState<number>(0)
-  const [completedSteps, setCompletedSteps] = useState<number>(0)
+  const [progressState, setProgressState] = useState<ProgressState>({
+    progress: 0,
+    message: '',
+  })
   const [outlineOpen, setOutlineOpen] = useState(false)
   const [outline, setOutline] = useState('')
   const [canExport, setCanExport] = useState(false)
 
-  const updateProgress = ({ completed, total, message }: ProgressUpdate): void => {
-    setCompletedSteps(completed)
-    setTotalSteps(total)
-    setProgress((completed / total) * 100)
-    setStatusMessage(message)
+  const updateProgress = (progress: number, total: number, message: string) => {
+    setProgressState({
+      progress: (progress / total) * 100,
+      message,
+    })
   }
 
-  const handleModeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleModeChange = (event: SelectChangeEvent<ResearchMode>) => {
     dispatch(setMode(event.target.value as ResearchMode))
   }
 
-  const handleTypeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleTypeChange = (event: SelectChangeEvent<ResearchType>) => {
     dispatch(setType(event.target.value as ResearchType))
   }
 
-  const handleCitationStyleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCitationStyleChange = (event: SelectChangeEvent<CitationStyle>) => {
     dispatch(setCitationStyle(event.target.value as CitationStyle))
   }
 
@@ -104,122 +96,48 @@ const ResearchPage = () => {
       return
     }
 
-    // Clear previous research content when generating new title
-    dispatch(setSections([]));
-    dispatch(setReferences([]));
+    dispatch(setSections([]))
+    dispatch(setReferences([]))
     dispatch(setLoading(true))
     dispatch(setError(null))
 
     try {
       const generatedTitle = await generateTitle(query)
       dispatch(setTitle(generatedTitle))
+      setCanExport(false)
     } catch (error) {
-      if (error instanceof Error) {
+      if (error instanceof ResearchException) {
         dispatch(setError(error.message))
+      } else {
+        dispatch(setError('Failed to generate title'))
       }
     } finally {
       dispatch(setLoading(false))
-      setCanExport(false);
     }
   }
 
   const handleGenerateResearch = async () => {
-    if (!research.title) {
-      dispatch(setError('Please generate a title first'));
-      return;
+    if (!query) {
+      dispatch(setError('Please enter a research topic'))
+      return
     }
 
-    if (!research.mode || research.type === undefined) {
-      dispatch(setError('Research mode and type are required'));
-      return;
-    }
-
-    setIsLoading(true);
-    setCanExport(false);
-    dispatch(setError(null));
-    dispatch(setSections([]));
-    dispatch(setReferences([]));
-    
-    // Set initial progress to 3%
-    updateProgress({ completed: 3, total: 100, message: 'Initializing research generation...' });
-
+    setIsLoading(true)
     try {
-      console.log('Generating research for:', research.title, 'Mode:', research.mode, 'Type:', research.type);
-      
-      const { sections, references, outline } = await generateResearch(
-        research.title,
-        research.mode,
-        research.type,
-        research.citationStyle,
-        updateProgress
-      );
-
-      setOutline(outline);
-      dispatch(setSections(sections));
-      dispatch(setReferences(references));
-
-      try {
-        if (!user?.id) {
-          throw new Error('User must be logged in to save research');
-        }
-
-        const result = await saveResearchEntry({
-          userId: user.id,
-          title: research.title,
-          content: {
-            sections: sections.map(section => ({
-              title: section.title,
-              content: section.content,
-              number: section.number,
-              subsections: section.subsections
-            }))
-          },
-          references,
-          created_at: new Date().toISOString()
-        });
-
-        dispatch(addToHistory({
-          id: result.id,
-          title: research.title,
-          content: sections,
-          references,
-          timestamp: new Date().toISOString()
-        }));
-
-        setCanExport(true);
-      } catch (error) {
-        console.error('Error saving research:', error);
-        dispatch(setError(error instanceof Error ? error.message : 'Failed to save research'));
-      }
+      const result = await generateResearch(query, (progress, total, message) => {
+        updateProgress(progress, total, message);
+      });
+      setOutline(result.outline)
+      dispatch(setSections(result.sections))
+      dispatch(setReferences(result.references))
     } catch (error) {
-      console.error('Error in handleGenerateResearch:', error);
-      let errorMessage = 'An unexpected error occurred. Please try again.';
-      
       if (error instanceof ResearchException) {
-        switch (error.type) {
-          case ResearchError.TOKEN_LIMIT_EXCEEDED:
-            errorMessage = 'The research content is too long. Please try a shorter query or use Basic mode.';
-            break;
-          case ResearchError.API_ERROR:
-            errorMessage = 'Failed to communicate with the research service. Please try again.';
-            break;
-          case ResearchError.VALIDATION_FAILED:
-            errorMessage = 'Research validation failed. Please check your input and try again.';
-            break;
-          case ResearchError.TIMEOUT_ERROR:
-            errorMessage = 'The request timed out. Please try again.';
-            break;
-          default:
-            errorMessage = error.message || 'An error occurred while generating research.';
-        }
-      } else if (error instanceof Error) {
-        errorMessage = error.message;
+        dispatch(setError(error.message))
+      } else {
+        dispatch(setError('Failed to generate research'))
       }
-      
-      dispatch(setError(errorMessage));
-      setCanExport(false);
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
   };
 
@@ -249,16 +167,16 @@ const ResearchPage = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CircularProgress size={20} />
             <Typography variant="body2" color="text.secondary">
-              {statusMessage}
+              {progressState.message}
             </Typography>
           </Box>
           <Typography variant="body2" color="text.secondary">
-            {Math.round(progress)}%
+            {Math.round(progressState.progress)}%
           </Typography>
         </Box>
         <LinearProgress 
           variant="determinate" 
-          value={progress} 
+          value={progressState.progress} 
           sx={{ 
             height: 8,
             borderRadius: 4,
@@ -321,10 +239,10 @@ const ResearchPage = () => {
 
       <FormControl fullWidth sx={{ mb: 2 }}>
         <InputLabel>Type</InputLabel>
-        <Select<ResearchType>
+        <Select
           value={research.type}
           label="Type"
-          onChange={(e) => handleTypeChange(e as React.ChangeEvent<HTMLInputElement>)}
+          onChange={handleTypeChange}
         >
           <MenuItem value={ResearchType.Article}>Article</MenuItem>
           <MenuItem value={ResearchType.General}>General Research</MenuItem>
@@ -465,49 +383,46 @@ const ResearchPage = () => {
     </Dialog>
   );
 
-  const handleExportMarkup = async () => {
+  const handleDownloadWord = async () => {
     try {
-      const metadata = {
+      if (!user) {
+        throw new ResearchException(ResearchError.AUTH_ERROR, 'User not authenticated');
+      }
+
+      const blob = await generateWordDocument({
         title: research.title,
-        author: 'Generated by AI Researcher', // You can customize this
-        date: new Date().toLocaleDateString()
-      };
-      const markup = await generateMarkup(metadata, research.sections, research.references);
-      const blob = new Blob([markup], { type: 'text/html' });
-      downloadDocument(blob, `${research.title.replace(/\s+/g, '_')}.html`);
+        author: user.name,
+        sections: research.sections,
+        references: research.references
+      });
+
+      downloadDocument(blob, `${research.title.replace(/[^a-zA-Z0-9]/g, '_')}.docx`);
     } catch (error) {
-      console.error('Error exporting markup:', error);
-      dispatch(setError(error instanceof Error ? error.message : 'Failed to export markup document'));
+      if (error instanceof ResearchException) {
+        dispatch(setError(error.message));
+      } else {
+        dispatch(setError('Error generating Word document'));
+      }
     }
   };
 
-  const handleExportPDF = async () => {
+  const handleDownloadPdf = async () => {
+    if (!research || !user) return;
     try {
       const metadata = {
         title: research.title,
-        author: 'Generated by AI Researcher',
-        date: new Date().toLocaleDateString()
+        author: user.name,
+        created: new Date()
       };
-      const pdfBlob = await generatePDF(metadata, research.sections, research.references);
-      downloadDocument(pdfBlob, `${research.title.replace(/\s+/g, '_')}.pdf`);
+      const blob = await generatePdfDocument(metadata, research.sections, research.references);
+      downloadDocument(blob, `${research.title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
     } catch (error) {
-      console.error('Error exporting PDF:', error);
-      dispatch(setError(error instanceof Error ? error.message : 'Failed to export PDF document'));
-    }
-  };
-
-  const handleExportDOCX = async () => {
-    try {
-      const metadata = {
-        title: research.title,
-        author: 'Generated by AI Researcher',
-        date: new Date().toLocaleDateString()
-      };
-      const docxBlob = await generateDOCX(metadata, research.sections, research.references);
-      downloadDocument(docxBlob, `${research.title.replace(/\s+/g, '_')}.docx`);
-    } catch (error) {
-      console.error('Error exporting DOCX:', error);
-      dispatch(setError(error instanceof Error ? error.message : 'Failed to export Word document'));
+      console.error('Error downloading PDF:', error);
+      if (error instanceof ResearchException) {
+        dispatch(setError(error.message));
+      } else {
+        dispatch(setError('Error generating PDF document'));
+      }
     }
   };
 
@@ -515,43 +430,7 @@ const ResearchPage = () => {
     <Box sx={{ display: 'flex', gap: 2, mt: 2, mb: 2 }}>
       <Button
         variant="contained"
-        onClick={handleExportMarkup}
-        disabled={!canExport}
-        startIcon={<DescriptionIcon />}
-        sx={{ 
-          backgroundColor: canExport ? 'primary.main' : 'grey.500',
-          '&:hover': {
-            backgroundColor: canExport ? 'primary.dark' : 'grey.600'
-          },
-          '&.Mui-disabled': {
-            backgroundColor: 'grey.300',
-            color: 'grey.500'
-          }
-        }}
-      >
-        Markup
-      </Button>
-      <Button
-        variant="contained"
-        onClick={handleExportPDF}
-        disabled={!canExport}
-        startIcon={<PictureAsPdfIcon />}
-        sx={{ 
-          backgroundColor: canExport ? 'primary.main' : 'grey.500',
-          '&:hover': {
-            backgroundColor: canExport ? 'primary.dark' : 'grey.600'
-          },
-          '&.Mui-disabled': {
-            backgroundColor: 'grey.300',
-            color: 'grey.500'
-          }
-        }}
-      >
-        PDF
-      </Button>
-      <Button
-        variant="contained"
-        onClick={handleExportDOCX}
+        onClick={handleDownloadWord}
         disabled={!canExport}
         startIcon={<ArticleIcon />}
         sx={{ 
@@ -566,6 +445,24 @@ const ResearchPage = () => {
         }}
       >
         Word
+      </Button>
+      <Button
+        variant="contained"
+        onClick={handleDownloadPdf}
+        disabled={!canExport}
+        startIcon={<PictureAsPdfIcon />}
+        sx={{ 
+          backgroundColor: canExport ? 'primary.main' : 'grey.500',
+          '&:hover': {
+            backgroundColor: canExport ? 'primary.dark' : 'grey.600'
+          },
+          '&.Mui-disabled': {
+            backgroundColor: 'grey.300',
+            color: 'grey.500'
+          }
+        }}
+      >
+        PDF
       </Button>
     </Box>
   );
@@ -726,7 +623,7 @@ const ResearchPage = () => {
                     lineHeight: '1.5'
                   }}
                 >
-                  {research.sections.map((section: Section, index: number) => {
+                  {research.sections.map((section: ResearchSection, index: number) => {
                     console.log(`Rendering section ${section.number}:`, section);
                     console.log('Subsections:', section.subsections);
                     return (
@@ -756,7 +653,7 @@ const ResearchPage = () => {
                         </Typography>
                         {section.subsections && section.subsections.length > 0 && (
                           <Box sx={{ ml: 3, mb: 3 }}>
-                            {section.subsections.map((subsection: Section, subIndex: number) => (
+                            {section.subsections.map((subsection: ResearchSection, subIndex: number) => (
                               <div key={`${index}-${subIndex}`}>
                                 <Typography 
                                   variant="subtitle2" 

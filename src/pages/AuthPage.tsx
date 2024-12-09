@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { setUser, setAuthError } from '../store/slices/authSlice'
-import { AuthUser, createUser, authenticateUser } from '../services/databaseService'
+import { setUser } from '../store/slices/authSlice'
+import { createUser, authenticateUser } from '../services/databaseService'
 import {
   Container,
   Paper,
