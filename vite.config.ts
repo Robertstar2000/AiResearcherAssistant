@@ -17,7 +17,9 @@ export default defineConfig({
           'doc-vendor': ['pdfmake', 'docx']
         }
       }
-    }
+    },
+    chunkSizeWarningLimit: 1600,
+    assetsInlineLimit: 4096
   },
   resolve: {
     alias: {
@@ -26,10 +28,9 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    strictPort: true,
-    host: true,
-    watch: {
-      usePolling: true,
-    },
+    host: true
+  },
+  preview: {
+    port: 3000
   }
 })
