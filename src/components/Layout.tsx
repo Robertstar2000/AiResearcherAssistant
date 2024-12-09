@@ -6,11 +6,7 @@ import { RootState } from '../store'
 import { signOut } from '../services/authService'
 import { AuthUser } from '../store/slices/authSlice'
 
-interface LayoutProps {
-  children?: React.ReactNode
-}
-
-const Layout: React.FC<LayoutProps> = ({ children }) => {
+const Layout = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const isAuthenticated = useSelector((state: RootState) => state.auth.isAuthenticated)
@@ -38,63 +34,30 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           >
             <MenuIcon />
           </IconButton>
-          
-          <Typography 
-            variant="h6" 
-            component="div" 
-            sx={{ 
-              flexGrow: 1, 
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              letterSpacing: '0.5px'
-            }}
-            onClick={() => navigate('/')}
-          >
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             AI Researcher
           </Typography>
-
-          {location.pathname !== '/auth' && !isAuthenticated && (
-            <Button 
-              color="inherit" 
-              onClick={() => navigate('/auth')}
-              sx={{ textTransform: 'none' }}
-            >
-              Sign In
-            </Button>
-          )}
-
-          {isAuthenticated && (
+          {isAuthenticated ? (
             <>
               <Typography variant="body1" sx={{ mr: 2 }}>
-                {user?.name || user?.email}
+                {user?.email}
               </Typography>
               <IconButton color="inherit" onClick={handleLogout}>
                 <ExitToAppIcon />
               </IconButton>
             </>
+          ) : (
+            location.pathname !== '/auth' && (
+              <Button color="inherit" onClick={() => navigate('/auth')}>
+                Login
+              </Button>
+            )
           )}
         </Toolbar>
       </AppBar>
-
-      <Container component="main" sx={{ flexGrow: 1, py: 3 }}>
-        {children || <Outlet />}
+      <Container component="main" sx={{ flex: 1, py: 3 }}>
+        <Outlet />
       </Container>
-
-      <Box 
-        component="footer" 
-        sx={{ 
-          py: 3, 
-          bgcolor: 'background.paper',
-          borderTop: '1px solid',
-          borderColor: 'divider'
-        }}
-      >
-        <Container maxWidth="lg">
-          <Typography variant="body2" color="text.secondary" align="center">
-            {new Date().getFullYear()} AI Researcher. All rights reserved.
-          </Typography>
-        </Container>
-      </Box>
     </Box>
   )
 }

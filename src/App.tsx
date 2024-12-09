@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { Box } from '@mui/material'
 import { useEffect } from 'react'
 
@@ -7,33 +7,28 @@ import LandingPage from './pages/LandingPage'
 import AuthPage from './pages/AuthPage'
 import ResearchPage from './pages/ResearchPage'
 import { initializeAuth } from './services/authService'
+import ErrorBoundary from './components/ErrorBoundary'
 
 function App() {
-  const location = useLocation()
-
   useEffect(() => {
     // Initialize auth on mount
+    console.log('Initializing auth...')
     initializeAuth()
-    
-    // Force redirect to landing page if we're at research page initially
-    if (location.pathname === '/research' && !sessionStorage.getItem('visited')) {
-      window.location.href = '/'
-    }
-    sessionStorage.setItem('visited', 'true')
-  }, [location])
+  }, [])
 
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<LandingPage />} />
-          <Route path="auth" element={<AuthPage />} />
-          <Route path="research" element={<ResearchPage />} />
-          {/* Catch all route - redirect to landing page */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </Box>
+    <ErrorBoundary>
+      <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route index element={<LandingPage />} />
+            <Route path="auth" element={<AuthPage />} />
+            <Route path="research" element={<ResearchPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </Box>
+    </ErrorBoundary>
   )
 }
 
