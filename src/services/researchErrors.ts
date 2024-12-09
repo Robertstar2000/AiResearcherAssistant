@@ -10,7 +10,7 @@ export class ResearchException extends Error {
   constructor(
     public type: ResearchError,
     message: string,
-    public details?: any
+    public details?: Record<string, unknown>
   ) {
     super(message);
     this.name = 'ResearchException';

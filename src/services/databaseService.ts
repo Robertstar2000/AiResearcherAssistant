@@ -13,6 +13,26 @@ export interface ResearchEntry {
   references: string
 }
 
+interface Section {
+  title: string;
+  content: string;
+  number: string;
+  subsections?: Section[];
+}
+
+interface ResearchContent {
+  sections: Section[];
+}
+
+interface ResearchEntryData {
+  userId: string;
+  title: string;
+  content: ResearchContent;
+  references: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
 // Initialize real-time subscription
 export const initializeRealtimeSubscription = (onUpdate: (payload: any) => void) => {
   const channel = supabase.channel('custom-filter-channel')
@@ -127,50 +147,31 @@ export const getUserByUsername = async (userName: string) => {
 }
 
 // Research operations
-export const saveResearchEntry = async (data: {
-  user_id: string,
-  title: string,
-  content: {
-    sections: any[],
-    outline: string,
-    mode: string,
-    type: string,
-    citationStyle: string
-  },
-  references: string[],
-  some_column?: string
-}) => {
+export const saveResearchEntry = async (data: ResearchEntryData): Promise<{ id: string }> => {
   try {
     console.log('Saving research entry:', data);
     
-    // Format the data to match the table structure
-    const formattedData = {
-      'User-Name': data.user_id, // Map user_id to User-Name column
-      title: data.title,
-      content: JSON.stringify(data.content), // Stringify content object
-      references: JSON.stringify(data.references), // Stringify references array
-      'PassWord': '', // Required field but not used for research entries
-      Occupation: '', // Required field but not used for research entries
-      Location: '', // Required field but not used for research entries
-    };
-
-    const { data: result, error } = await supabase
+    const { data: savedData, error } = await supabase
       .from('AiResearcherAssistant')
-      .insert([formattedData])
-      .select()
+      .insert([{
+        'User-Name': data.userId,
+        title: data.title,
+        content: JSON.stringify(data.content),
+        references: JSON.stringify(data.references),
+        'PassWord': '', // Required field but not used for research entries
+        Occupation: '', // Required field but not used for research entries
+        Location: '', // Required field but not used for research entries
+        created_at: data.created_at || new Date().toISOString()
+      }])
+      .select('id')
       .single();
 
     if (error) {
-      console.error('Database error saving research:', error);
-      throw new Error(`Failed to save research: ${error.message}`);
+      console.error('Error saving research:', error);
+      throw error;
     }
 
-    if (!result) {
-      throw new Error('No data returned after saving research');
-    }
-
-    console.log('Research saved successfully:', result);
-    return result;
+    return savedData;
   } catch (error) {
     console.error('Error in saveResearchEntry:', error);
     throw error;

@@ -31,10 +31,16 @@ import {
   RocketLaunch as RocketLaunchIcon,
   CheckCircle as CheckCircleIcon
 } from '@mui/icons-material'
-// @ts-ignore
 import Picture5 from '../assets/Picture5.png'
 
-const features = [
+interface Feature {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  details: string[];
+}
+
+const features: Feature[] = [
   {
     icon: <SearchIcon fontSize="large" />,
     title: 'Research Modes',

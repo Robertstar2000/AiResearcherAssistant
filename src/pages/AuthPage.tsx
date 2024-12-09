@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { setUser, setAuthError } from '../store/slices/authSlice'
-import { createUser, authenticateUser } from '../services/databaseService'
+import { AuthUser, createUser, authenticateUser } from '../services/databaseService'
 import {
   Container,
   Paper,
@@ -85,9 +85,9 @@ export default function AuthPage() {
       const newUser = await createUser(userData)
       dispatch(setUser(newUser))
       navigate('/research')
-    } catch (error: any) {
+    } catch (error) {
       console.error('Signup error:', error)
-      setError(error.message || 'Failed to create account. Please try again.')
+      setError(error instanceof Error ? error.message : 'Failed to create account. Please try again.')
     }
   }
 

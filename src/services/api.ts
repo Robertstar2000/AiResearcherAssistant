@@ -69,11 +69,21 @@ export const waitBetweenCalls = async (retryCount: number = 0): Promise<void> =>
 };
 
 // Helper function for API calls with retry logic
-const makeApiCall = async <T>(
+interface ApiResponse<T> {
+  data: T;
+  error?: string;
+}
+
+interface GenerateResponse {
+  content: string;
+  warning?: string;
+}
+
+async function makeApiCall<T>(
   callFn: () => Promise<T>,
   errorMsg: string,
   retryCount: number = 0
-): Promise<T> => {
+): Promise<T> {
   try {
     // Check if API key is configured
     if (!GROQ_API_KEY) {
@@ -84,43 +94,71 @@ const makeApiCall = async <T>(
     const result = await callFn();
     lastApiCallTime = Date.now(); // Update last API call time
     return result;
-  } catch (error: any) {
+  } catch (error) {
     console.error(`${errorMsg}:`, error);
     
-    // Handle rate limiting
-    if (error.response?.status === 429 || (error.message && error.message.includes('rate limit'))) {
-      if (retryCount < GROQ_CONFIG.MAX_RETRIES) {
-        console.log(`Rate limit hit, retrying (${retryCount + 1}/${GROQ_CONFIG.MAX_RETRIES})...`);
-        return makeApiCall(callFn, errorMsg, retryCount + 1);
+    if (axios.isAxiosError(error)) {
+      // Handle rate limiting
+      if (error.response?.status === 429 || (error.message && error.message.includes('rate limit'))) {
+        if (retryCount < GROQ_CONFIG.MAX_RETRIES) {
+          console.log(`Rate limit hit, retrying (${retryCount + 1}/${GROQ_CONFIG.MAX_RETRIES})...`);
+          return makeApiCall(callFn, errorMsg, retryCount + 1);
+        }
+        throw new ResearchException(ResearchError.API_ERROR, 'Rate limit exceeded after multiple retries');
       }
-      throw new ResearchException(ResearchError.API_ERROR, 'Rate limit exceeded after multiple retries');
+      
+      // Handle authentication errors
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        throw new ResearchException(ResearchError.API_ERROR, 'Invalid API key or authentication failed');
+      }
     }
     
-    // Handle authentication errors
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      throw new ResearchException(ResearchError.API_ERROR, 'Invalid API key or authentication failed');
-    }
-
-    // Handle network errors
-    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
-      throw new ResearchException(ResearchError.API_ERROR, 'Network error: Unable to connect to the research service');
-    }
-
-    // Handle timeout errors
-    if (error.code === 'ETIMEDOUT' || error.code === 'ESOCKETTIMEDOUT') {
-      throw new ResearchException(
-        ResearchError.TIMEOUT_ERROR,
-        'Request timed out'
-      );
-    }
-
     // Handle other errors
     throw new ResearchException(
       ResearchError.API_ERROR,
-      errorMsg + (error.message ? `: ${error.message}` : '')
+      error instanceof Error ? error.message : 'An unknown error occurred'
     );
   }
 };
+
+// Define interfaces for API responses
+interface Paper {
+  paperId: string;
+  title: string;
+  abstract: string;
+  authors: Array<{
+    authorId: string;
+    name: string;
+  }>;
+  year: number;
+  venue: string;
+  citationCount: number;
+}
+
+interface PaperDetails extends Paper {
+  references: Paper[];
+  citations: Paper[];
+}
+
+interface ResearchData {
+  userId: string;
+  title: string;
+  content: {
+    sections: Array<{
+      title: string;
+      content: string;
+      number: string;
+      subsections?: Array<{
+        title: string;
+        content: string;
+        number: string;
+      }>;
+    }>;
+  };
+  references: string[];
+  created_at?: string;
+  updated_at?: string;
+}
 
 // Helper function to estimate tokens (rough estimate: 1 token ≈ 4 characters)
 const estimateTokens = (text: string): number => {
@@ -177,12 +215,12 @@ export const generateTitle = async (query: string): Promise<string> => {
   }
 }
 
-export const generateSection = async (
+export async function generateSection(
   topic: string,
   sectionTitle: string,
   citationStyle: string = 'APA',
   isSubsection: boolean = false
-): Promise<{ content: string; warning?: string }> => {
+): Promise<GenerateResponse> {
   try {
     const minWords = isSubsection ? 1000 : 2000;
 
@@ -259,11 +297,11 @@ export const generateSection = async (
   }
 };
 
-export const generateSectionBatch = async (
+export async function generateSectionBatch(
   title: string,
-  sections: { sectionTitle: string; prompt: string }[],
+  sections: Array<{ sectionTitle: string; prompt: string }>,
   citationStyle: string
-): Promise<string[]> => {
+): Promise<string[]> {
   try {
     const systemPrompt = `You are an expert academic researcher generating multiple sections for a research paper.
 Use ${citationStyle} citation style and maintain high academic standards.
@@ -318,7 +356,130 @@ Requirements for each section:
   }
 }
 
-export const generateOutline = async (topic: string): Promise<string> => {
+export async function generateReferences(
+  topic: string,
+  citationStyle: string = 'APA'
+): Promise<string[]> {
+  const maxRetries = 5;
+  const baseDelay = 15000;
+  let retryCount = 0;
+
+  const prompt = `Generate a list of academic references for research on "${topic}".
+  Requirements:
+  - Use ${citationStyle} citation style
+  - Include at least 10-15 references
+  - Focus on recent publications (2015-2024)
+  - Include journal articles, books, and conference papers
+  - Format each reference on a new line
+  - Ensure citations are complete with all required elements`;
+
+  while (retryCount < maxRetries) {
+    try {
+      if (retryCount > 0) {
+        console.log(`Attempt ${retryCount + 1}/${maxRetries} for references generation`);
+        await new Promise(resolve => setTimeout(resolve, baseDelay * retryCount));
+      }
+
+      const response = await fetch(GROQ_API_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: GROQ_CONFIG.MODEL,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert academic researcher creating a reference list. Format each reference according to the specified citation style.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 2000,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data || !data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error('Invalid response format from API');
+      }
+
+      const content = data.choices[0].message.content;
+      const references = content.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+      if (references.length === 0) {
+        throw new Error('No references generated');
+      }
+
+      return references;
+    } catch (error) {
+      console.error(`Error on attempt ${retryCount + 1}/${maxRetries}:`, error);
+      retryCount++;
+      
+      if (retryCount === maxRetries) {
+        console.error('Failed to generate references after all retries');
+        return ['Error: Failed to generate references. Please try again.'];
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, baseDelay * retryCount));
+    }
+  }
+
+  return ['Error: Failed to generate references after all retries'];
+};
+
+// Semantic Scholar API calls
+export async function searchPapers(query: string, limit = 10): Promise<Paper[]> {
+  try {
+    const response = await searchApi.get('/search', { params: { query, limit } });
+    return response.data.papers;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error searching papers';
+    console.error('Error searching papers:', errorMessage);
+    throw new Error(errorMessage);
+  }
+};
+
+export async function getPaperDetails(paperId: string): Promise<PaperDetails> {
+  const response = await searchApi.get(`/paper/${paperId}`);
+  return response.data;
+}
+
+// Supabase database operations
+export async function saveResearch(researchData: ResearchData): Promise<{ id: string }> {
+  const { data, error } = await supabase
+    .from('research')
+    .insert([researchData])
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+export async function getResearchHistory(userId: string): Promise<ResearchData[]> {
+  const { data, error } = await supabase
+    .from('research')
+    .select('*')
+    .eq('userId', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data;
+};
+
+export async function generateOutline(topic: string): Promise<string> {
   try {
     let retryCount = 0;
 
@@ -404,7 +565,7 @@ export const generateOutline = async (topic: string): Promise<string> => {
   }
 };
 
-export const generateDetailedOutline = async (topic: string, mode: ResearchMode, type: ResearchType): Promise<string> => {
+export async function generateDetailedOutline(topic: string, mode: ResearchMode, type: ResearchType): Promise<string> {
   if (!topic || !mode || type === undefined) {
     throw new ResearchException(
       ResearchError.VALIDATION_FAILED,
@@ -668,7 +829,7 @@ Requirements:
   }
 };
 
-export const parseSectionsFromOutline = (outline: string): string[] => {
+export function parseSectionsFromOutline(outline: string): string[] {
   const sections: string[] = [];
   const lines = outline.split('\n').map((line: string) => line.trim());
   
@@ -680,126 +841,3 @@ export const parseSectionsFromOutline = (outline: string): string[] => {
   
   return sections;
 };
-
-export const generateReferences = async (topic: string, citationStyle: string = 'APA'): Promise<string[]> => {
-  const maxRetries = 5;
-  const baseDelay = 15000;
-  let retryCount = 0;
-
-  const prompt = `Generate a list of academic references for research on "${topic}".
-  Requirements:
-  - Use ${citationStyle} citation style
-  - Include at least 10-15 references
-  - Focus on recent publications (2015-2024)
-  - Include journal articles, books, and conference papers
-  - Format each reference on a new line
-  - Ensure citations are complete with all required elements`;
-
-  while (retryCount < maxRetries) {
-    try {
-      if (retryCount > 0) {
-        console.log(`Attempt ${retryCount + 1}/${maxRetries} for references generation`);
-        await new Promise(resolve => setTimeout(resolve, baseDelay * retryCount));
-      }
-
-      const response = await fetch(GROQ_API_URL, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${GROQ_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: GROQ_CONFIG.MODEL,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert academic researcher creating a reference list. Format each reference according to the specified citation style.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 2000,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      if (!data || !data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error('Invalid response format from API');
-      }
-
-      const content = data.choices[0].message.content;
-      const references = content.split('\n')
-        .map(line => line.trim())
-        .filter(line => line.length > 0);
-
-      if (references.length === 0) {
-        throw new Error('No references generated');
-      }
-
-      return references;
-    } catch (error) {
-      console.error(`Error on attempt ${retryCount + 1}/${maxRetries}:`, error);
-      retryCount++;
-      
-      if (retryCount === maxRetries) {
-        console.error('Failed to generate references after all retries');
-        return ['Error: Failed to generate references. Please try again.'];
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, baseDelay * retryCount));
-    }
-  }
-
-  return ['Error: Failed to generate references after all retries'];
-};
-
-// Semantic Scholar API calls
-export const searchPapers = async (query: string, limit = 10): Promise<any> => {
-  try {
-    const response = await fetch(`${SEARCH_API_URL}/search?query=${encodeURIComponent(query)}&limit=${limit}`);
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error searching papers';
-    console.error('Error searching papers:', errorMessage);
-    throw new Error(errorMessage);
-  }
-};
-
-export const getPaperDetails = async (paperId: string) => {
-  const response = await searchApi.get(`/paper/${paperId}`, {
-    params: {
-      fields: 'title,abstract,authors,year,url,references,citations'
-    }
-  })
-  return response.data
-}
-
-// Supabase database operations
-export const saveResearch = async (researchData: any) => {
-  const { data, error } = await supabase
-    .from('research_queries')
-    .insert([researchData])
-
-  if (error) throw error
-  return data
-}
-
-export const getResearchHistory = async (userId: string) => {
-  const { data, error } = await supabase
-    .from('research_queries')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-
-  if (error) throw error
-  return data
-}

@@ -50,6 +50,19 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import ArticleIcon from '@mui/icons-material/Article';
 
+interface Section {
+  number: string;
+  title: string;
+  content: string;
+  subsections?: Section[];
+}
+
+interface ProgressUpdate {
+  completed: number;
+  total: number;
+  message: string;
+}
+
 const ResearchPage = () => {
   const dispatch = useDispatch()
   const research = useSelector((state: RootState) => state.research)
@@ -57,31 +70,31 @@ const ResearchPage = () => {
   const [query, setQuery] = useState('')
   const [editingTitle, setEditingTitle] = useState(false)
   const [editedTitle, setEditedTitle] = useState('')
-  const [isLoading, setIsLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [statusMessage, setStatusMessage] = useState('');
-  const [totalSteps, setTotalSteps] = useState(0);
-  const [completedSteps, setCompletedSteps] = useState(0);
-  const [outlineOpen, setOutlineOpen] = useState(false);
-  const [outline, setOutline] = useState('');
-  const [canExport, setCanExport] = useState(false);
+  const [isLoading, setIsLoading] = useState(false)
+  const [progress, setProgress] = useState<number>(0)
+  const [statusMessage, setStatusMessage] = useState<string>('')
+  const [totalSteps, setTotalSteps] = useState<number>(0)
+  const [completedSteps, setCompletedSteps] = useState<number>(0)
+  const [outlineOpen, setOutlineOpen] = useState(false)
+  const [outline, setOutline] = useState('')
+  const [canExport, setCanExport] = useState(false)
 
-  const updateProgress = (completed: number, total: number, message: string) => {
-    setCompletedSteps(completed);
-    setTotalSteps(total);
-    setProgress((completed / total) * 100);
-    setStatusMessage(message);
-  };
+  const updateProgress = ({ completed, total, message }: ProgressUpdate): void => {
+    setCompletedSteps(completed)
+    setTotalSteps(total)
+    setProgress((completed / total) * 100)
+    setStatusMessage(message)
+  }
 
-  const handleModeChange = (event: any) => {
+  const handleModeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     dispatch(setMode(event.target.value as ResearchMode))
   }
 
-  const handleTypeChange = (event: any) => {
+  const handleTypeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     dispatch(setType(event.target.value as ResearchType))
   }
 
-  const handleCitationStyleChange = (event: any) => {
+  const handleCitationStyleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     dispatch(setCitationStyle(event.target.value as CitationStyle))
   }
 
@@ -128,7 +141,7 @@ const ResearchPage = () => {
     dispatch(setReferences([]));
     
     // Set initial progress to 3%
-    updateProgress(3, 100, 'Initializing research generation...');
+    updateProgress({ completed: 3, total: 100, message: 'Initializing research generation...' });
 
     try {
       console.log('Generating research for:', research.title, 'Mode:', research.mode, 'Type:', research.type);
@@ -145,52 +158,59 @@ const ResearchPage = () => {
       dispatch(setSections(sections));
       dispatch(setReferences(references));
 
-      await saveResearchEntry({
-        user_id: user?.id || '',
-        title: research.title,
-        content: {
-          sections,
-          outline,
-          mode: research.mode,
-          type: research.type,
-          citationStyle: research.citationStyle
-        },
-        references,
-        some_column: 'some_value'
-      });
+      try {
+        if (!user?.id) {
+          throw new Error('User must be logged in to save research');
+        }
 
-      dispatch(addToHistory({
-        id: Date.now().toString(),
-        title: research.title,
-        content: sections,
-        references,
-        timestamp: new Date().toISOString()
-      }));
+        const result = await saveResearchEntry({
+          userId: user.id,
+          title: research.title,
+          content: {
+            sections: sections.map(section => ({
+              title: section.title,
+              content: section.content,
+              number: section.number,
+              subsections: section.subsections
+            }))
+          },
+          references,
+          created_at: new Date().toISOString()
+        });
 
-      if (sections.length > 0) {
+        dispatch(addToHistory({
+          id: result.id,
+          title: research.title,
+          content: sections,
+          references,
+          timestamp: new Date().toISOString()
+        }));
+
         setCanExport(true);
-        console.log('Export enabled: Content generation complete');
+      } catch (error) {
+        console.error('Error saving research:', error);
+        dispatch(setError(error instanceof Error ? error.message : 'Failed to save research'));
       }
     } catch (error) {
       console.error('Error in handleGenerateResearch:', error);
-      let errorMessage = 'An unexpected error occurred';
+      let errorMessage = 'An unexpected error occurred. Please try again.';
       
       if (error instanceof ResearchException) {
         switch (error.type) {
           case ResearchError.TOKEN_LIMIT_EXCEEDED:
-            errorMessage = 'The research topic is too long. Please provide a shorter topic.';
-            break;
-          case ResearchError.VALIDATION_FAILED:
-            errorMessage = `Failed to generate a valid outline: ${error.message}`;
-            break;
-          case ResearchError.TIMEOUT_ERROR:
-            errorMessage = 'The outline generation timed out. Please try again.';
+            errorMessage = 'The research content is too long. Please try a shorter query or use Basic mode.';
             break;
           case ResearchError.API_ERROR:
             errorMessage = 'Failed to communicate with the research service. Please try again.';
             break;
+          case ResearchError.VALIDATION_FAILED:
+            errorMessage = 'Research validation failed. Please check your input and try again.';
+            break;
+          case ResearchError.TIMEOUT_ERROR:
+            errorMessage = 'The request timed out. Please try again.';
+            break;
           default:
-            errorMessage = error.message;
+            errorMessage = error.message || 'An error occurred while generating research.';
         }
       } else if (error instanceof Error) {
         errorMessage = error.message;
@@ -301,10 +321,10 @@ const ResearchPage = () => {
 
       <FormControl fullWidth sx={{ mb: 2 }}>
         <InputLabel>Type</InputLabel>
-        <Select
+        <Select<ResearchType>
           value={research.type}
           label="Type"
-          onChange={handleTypeChange}
+          onChange={(e) => handleTypeChange(e as React.ChangeEvent<HTMLInputElement>)}
         >
           <MenuItem value={ResearchType.Article}>Article</MenuItem>
           <MenuItem value={ResearchType.General}>General Research</MenuItem>
@@ -457,7 +477,7 @@ const ResearchPage = () => {
       downloadDocument(blob, `${research.title.replace(/\s+/g, '_')}.html`);
     } catch (error) {
       console.error('Error exporting markup:', error);
-      dispatch(setError('Failed to export markup document'));
+      dispatch(setError(error instanceof Error ? error.message : 'Failed to export markup document'));
     }
   };
 
@@ -472,7 +492,7 @@ const ResearchPage = () => {
       downloadDocument(pdfBlob, `${research.title.replace(/\s+/g, '_')}.pdf`);
     } catch (error) {
       console.error('Error exporting PDF:', error);
-      dispatch(setError('Failed to export PDF document'));
+      dispatch(setError(error instanceof Error ? error.message : 'Failed to export PDF document'));
     }
   };
 
@@ -487,7 +507,7 @@ const ResearchPage = () => {
       downloadDocument(docxBlob, `${research.title.replace(/\s+/g, '_')}.docx`);
     } catch (error) {
       console.error('Error exporting DOCX:', error);
-      dispatch(setError('Failed to export Word document'));
+      dispatch(setError(error instanceof Error ? error.message : 'Failed to export Word document'));
     }
   };
 
@@ -552,7 +572,16 @@ const ResearchPage = () => {
 
   useEffect(() => {
     // Initialize real-time subscription
-    const cleanup = initializeRealtimeSubscription((payload) => {
+    const cleanup = initializeRealtimeSubscription((payload: {
+      eventType: 'INSERT' | 'UPDATE' | 'DELETE',
+      new: {
+        id: string;
+        title: string;
+        content: { sections: any[] };
+        references: any[];
+        created_at: string;
+      }
+    }) => {
       console.log('Research updated:', payload)
       // Handle real-time updates
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
@@ -697,7 +726,7 @@ const ResearchPage = () => {
                     lineHeight: '1.5'
                   }}
                 >
-                  {research.sections.map((section, index) => {
+                  {research.sections.map((section: Section, index: number) => {
                     console.log(`Rendering section ${section.number}:`, section);
                     console.log('Subsections:', section.subsections);
                     return (
@@ -708,54 +737,52 @@ const ResearchPage = () => {
                           sx={{ 
                             fontSize: '14px',
                             fontWeight: 'bold',
-                            color: 'primary.main'
+                            color: 'primary.main',
+                            mb: 1
                           }}
                         >
                           {section.number}. {section.title}
                         </Typography>
-                        {section.content && (
-                          <Typography 
-                            paragraph 
-                            sx={{ 
-                              ml: 2,
-                              fontSize: '13px',
-                              mb: 2
-                            }}
-                          >
-                            {section.content}
-                          </Typography>
-                        )}
+                        <Typography 
+                          variant="body1" 
+                          paragraph 
+                          sx={{ 
+                            fontSize: '13px',
+                            whiteSpace: 'pre-wrap',
+                            mb: 3
+                          }}
+                        >
+                          {section.content}
+                        </Typography>
                         {section.subsections && section.subsections.length > 0 && (
                           <Box sx={{ ml: 3, mb: 3 }}>
-                            {section.subsections.map((subsection, subIndex) => {
-                              console.log(`Rendering subsection ${subsection.number}:`, subsection);
-                              return (
-                                <div key={`${index}-${subIndex}`}>
-                                  <Typography 
-                                    variant="subtitle2" 
-                                    gutterBottom 
-                                    sx={{ 
-                                      fontSize: '13px',
-                                      fontWeight: 'bold',
-                                      color: 'text.secondary',
-                                      mt: 1
-                                    }}
-                                  >
-                                    {subsection.number} {subsection.title}
-                                  </Typography>
-                                  <Typography 
-                                    paragraph 
-                                    sx={{ 
-                                      ml: 2,
-                                      fontSize: '12px',
-                                      mb: 2
-                                    }}
-                                  >
-                                    {subsection.content}
-                                  </Typography>
-                                </div>
-                              );
-                            })}
+                            {section.subsections.map((subsection: Section, subIndex: number) => (
+                              <div key={`${index}-${subIndex}`}>
+                                <Typography 
+                                  variant="subtitle2" 
+                                  gutterBottom 
+                                  sx={{ 
+                                    fontSize: '13px',
+                                    fontWeight: 'bold',
+                                    color: 'primary.main',
+                                    mb: 1
+                                  }}
+                                >
+                                  {subsection.number}. {subsection.title}
+                                </Typography>
+                                <Typography 
+                                  variant="body1" 
+                                  paragraph 
+                                  sx={{ 
+                                    fontSize: '13px',
+                                    whiteSpace: 'pre-wrap',
+                                    mb: 2
+                                  }}
+                                >
+                                  {subsection.content}
+                                </Typography>
+                              </div>
+                            ))}
                           </Box>
                         )}
                       </div>
