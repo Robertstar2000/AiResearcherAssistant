@@ -6,7 +6,8 @@ export enum ResearchError {
   TIMEOUT_ERROR = 'TIMEOUT_ERROR',
   AUTH_ERROR = 'AUTH_ERROR',
   GENERATION_ERROR = 'GENERATION_ERROR',
-  PARSING_ERROR = 'PARSING_ERROR'
+  PARSING_ERROR = 'PARSING_ERROR',
+  CONFIGURATION_ERROR = 'CONFIGURATION_ERROR'  // Added configuration error type
 }
 
 export class ResearchException extends Error {
