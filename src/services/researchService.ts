@@ -102,7 +102,7 @@ export const generateResearch = async (
     // Generate references
     try {
       progressCallback(totalSteps - 1, totalSteps, 'Generating references...');
-      references = await generateReferences(sections, citationStyle);
+      references = await generateReferences(topic, citationStyle);
       completedSteps++;
       progressCallback(completedSteps, totalSteps, 'Research generation complete!');
     } catch (error) {
