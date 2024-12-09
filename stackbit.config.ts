@@ -6,5 +6,12 @@ export default defineStackbitConfig({
   nodeVersion: '18',
   devCommand: 'npm run dev',
   buildCommand: 'npm run build',
-  publishDir: './dist'
+  publishDir: './dist',
+  experimental: {
+    ssg: {
+      name: 'vite',
+      devCommand: 'npm run dev',
+      devPort: 3000
+    }
+  }
 })
