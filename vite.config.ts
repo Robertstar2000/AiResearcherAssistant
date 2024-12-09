@@ -9,6 +9,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    minify: 'terser',
     rollupOptions: {
       output: {
         manualChunks: {
@@ -21,16 +22,19 @@ export default defineConfig({
     chunkSizeWarningLimit: 1600,
     assetsInlineLimit: 4096
   },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
   server: {
     port: 3000,
     host: true
   },
   preview: {
     port: 3000
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src')
+    }
+  },
+  esbuild: {
+    logOverride: { 'this-is-undefined-in-esm': 'silent' }
   }
 })

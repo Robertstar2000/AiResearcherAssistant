@@ -19,6 +19,7 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public static getDerivedStateFromError(error: Error): State {
+    console.error('ErrorBoundary caught an error:', error)
     return {
       hasError: true,
       error,
@@ -27,6 +28,7 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('ErrorBoundary details:', error, errorInfo)
     this.setState({
       error,
       errorInfo,
@@ -37,12 +39,8 @@ class ErrorBoundary extends Component<Props, State> {
     console.error('Error Info:', errorInfo)
   }
 
-  private handleReset = () => {
-    this.setState({
-      hasError: false,
-      error: null,
-      errorInfo: null,
-    })
+  private handleReload = () => {
+    window.location.reload()
   }
 
   public render() {
@@ -68,10 +66,10 @@ class ErrorBoundary extends Component<Props, State> {
           <Button
             variant="contained"
             color="primary"
-            onClick={this.handleReset}
+            onClick={this.handleReload}
             sx={{ mt: 2 }}
           >
-            Try Again
+            Reload Page
           </Button>
           {process.env.NODE_ENV === 'development' && this.state.error && (
             <Box sx={{ mt: 4, textAlign: 'left' }}>

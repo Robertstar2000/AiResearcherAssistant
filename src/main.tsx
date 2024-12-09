@@ -11,11 +11,18 @@ import theme from './theme'
 import ErrorBoundary from './components/ErrorBoundary'
 import './index.css'
 
-const rootElement = document.getElementById('root')
-if (!rootElement) throw new Error('Failed to find the root element')
+console.log('Starting application...')
 
+const rootElement = document.getElementById('root')
+if (!rootElement) {
+  console.error('Failed to find the root element')
+  throw new Error('Failed to find the root element')
+}
+
+console.log('Root element found, creating React root...')
 const root = ReactDOM.createRoot(rootElement)
 
+console.log('Rendering application...')
 root.render(
   <React.StrictMode>
     <ErrorBoundary>
