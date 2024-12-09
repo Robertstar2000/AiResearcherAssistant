@@ -14,22 +14,38 @@ interface OutlineItem {
   isSubsection: boolean;
 }
 
-export const generateResearch = async (
+interface ResearchResult {
+  sections: ResearchSection[];
+  references: string[];
+  outline: string;
+}
+
+interface Section {
+  title: string;
+  content: string;
+  warning: string | null;
+}
+
+export async function generateResearch(
   topic: string,
   mode: ResearchMode = ResearchMode.Basic,
   type: ResearchType = ResearchType.Article,
   citationStyle: CitationStyle = CitationStyle.APA,
-  progressCallback: (completed: number, total: number, message: string) => void
-): Promise<{ sections: ResearchSection[]; references: string[]; outline: string }> => {
-  const MAX_CONSECUTIVE_ERRORS = 3;
-  let consecutiveErrors = 0;
-  const sections: ResearchSection[] = [];
+  progressCallback: (progress: number, total: number, message: string) => void
+): Promise<ResearchResult> {
+  let sections: Section[] = [];
   let references: string[] = [];
   let outline: string = '';
+  let consecutiveErrors = 0;
+  const MAX_CONSECUTIVE_ERRORS = 3;
 
+  console.log('Starting research generation:', { mode, topic, type });
+  
+  const isAdvancedMode = mode.toLowerCase() === 'advanced';
+  
   try {
-    // Generate outline
-    progressCallback(0, 1, 'Generating outline...');
+    // Step 1: Generate outline (10% of progress)
+    progressCallback(0, 100, 'Generating research outline...');
     
     if (!topic || !mode || type === undefined) {
       throw new Error('Missing required parameters: topic, mode, and type are required');
@@ -41,21 +57,31 @@ export const generateResearch = async (
       throw new Error('Failed to generate outline: No content received');
     }
 
+    console.log('Generated outline:', outline);
+    progressCallback(10, 100, 'Outline generated. Analyzing structure...');
+
     const outlineItems = parseDetailedOutline(outline);
     if (!outlineItems || outlineItems.length === 0) {
       throw new Error('Failed to parse outline: No sections found');
     }
     
-    // Calculate total steps (outline items + references)
-    const totalSteps = outlineItems.length + 1;
-    let completedSteps = 0;
+    // Process each section (90% of remaining progress)
+    const totalSections = outlineItems.length;
+    console.log(`Processing ${totalSections} sections in ${mode} mode...`);
     
-    progressCallback(completedSteps, totalSteps, 'Starting research generation...');
-
-    // Process each section
     for (let i = 0; i < outlineItems.length; i++) {
       const item = outlineItems[i];
+      const sectionStartProgress = Math.floor(10 + ((i) / totalSections * 90));
+      
       try {
+        progressCallback(
+          sectionStartProgress,
+          100,
+          `Generating section ${i + 1} of ${totalSections}: ${item.title}`
+        );
+        
+        console.log(`Generating section ${i + 1}/${totalSections}:`, item.title);
+        
         const { content, warning } = await generateSection(
           topic,
           item.title,
@@ -69,10 +95,15 @@ export const generateResearch = async (
           warning: warning || null
         });
 
-        completedSteps++;
-        progressCallback(completedSteps, totalSteps, `Generated section ${completedSteps} of ${totalSteps - 1}...`);
+        // Calculate progress: 10% for outline + (current section / total sections * 90%)
+        const sectionProgress = Math.floor(10 + ((i + 1) / totalSections * 90));
+        progressCallback(
+          sectionProgress,
+          100,
+          `Completed section ${i + 1} of ${totalSections}: ${item.title}`
+        );
         
-        // Reset consecutive errors on success
+        console.log(`Completed section ${i + 1}/${totalSections}:`, item.title);
         consecutiveErrors = 0;
       } catch (error) {
         console.error(`Error generating section ${item.title}:`, error);
@@ -82,29 +113,36 @@ export const generateResearch = async (
           throw new Error(`Failed to generate section after ${MAX_CONSECUTIVE_ERRORS} consecutive attempts`);
         }
         
-        // Add error placeholder
         sections.push({
           title: item.title,
           content: 'Error generating section content',
           warning: error instanceof Error ? error.message : 'Unknown error'
         });
         
-        completedSteps++;
-        progressCallback(completedSteps, totalSteps, `Error in section ${completedSteps}, continuing...`);
+        const sectionProgress = Math.floor(10 + ((i + 1) / totalSections * 90));
+        progressCallback(
+          sectionProgress,
+          100,
+          `Error in section ${i + 1} of ${totalSections}, continuing...`
+        );
       }
       
-      // Wait between API calls to avoid rate limits
+      // Add a small delay between sections for rate limiting
       if (i < outlineItems.length - 1) {
+        if (isAdvancedMode) {
+          // Longer delay for advanced mode due to complexity
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
         await apiWaitBetweenCalls();
       }
     }
 
     // Generate references
     try {
-      progressCallback(totalSteps - 1, totalSteps, 'Generating references...');
+      progressCallback(95, 100, 'Generating references...');
       references = await generateReferences(topic, citationStyle);
-      completedSteps++;
-      progressCallback(completedSteps, totalSteps, 'Research generation complete!');
+      progressCallback(100, 100, 'Research generation complete!');
+      console.log('Research generation completed successfully');
     } catch (error) {
       console.error('Error generating references:', error);
       references = ['Error generating references'];

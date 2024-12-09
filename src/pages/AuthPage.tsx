@@ -1,191 +1,192 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState } from 'react'
 import { useDispatch } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
+import { setUser, setAuthError } from '../store/slices/authSlice'
+import { createUser, authenticateUser } from '../services/databaseService'
 import {
-  Box,
   Container,
   Paper,
   Typography,
   TextField,
   Button,
-  Grid,
-  Link,
+  Box,
+  Tab,
+  Tabs,
   Alert,
 } from '@mui/material'
-import { supabase } from '../services/api'
-import { setUser, setAuthError } from '../store/slices/authSlice'
 
-const AuthPage = () => {
-  const navigate = useNavigate()
-  const dispatch = useDispatch()
-  const [isLogin, setIsLogin] = useState(true)
-  const [email, setEmail] = useState('')
+interface TabPanelProps {
+  children?: React.ReactNode
+  index: number
+  value: number
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`simple-tabpanel-${index}`}
+      aria-labelledby={`simple-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+    </div>
+  )
+}
+
+export default function AuthPage() {
+  const [tab, setTab] = useState(0)
+  const [userName, setUserName] = useState('')
   const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
   const [occupation, setOccupation] = useState('')
-  const [geolocation, setGeolocation] = useState('')
+  const [location, setLocation] = useState('')
   const [error, setError] = useState<string | null>(null)
+  
+  const dispatch = useDispatch()
+  const navigate = useNavigate()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
+    setTab(newValue)
     setError(null)
+  }
 
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
     try {
-      if (isLogin) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        })
-
-        if (error) throw error
-
-        if (data.user) {
-          dispatch(setUser({
-            id: data.user.id,
-            email: data.user.email!,
-            name: data.user.user_metadata.name || '',
-            occupation: data.user.user_metadata.occupation,
-            geolocation: data.user.user_metadata.geolocation,
-          }))
-          navigate('/research')
-        }
+      const user = await authenticateUser(userName, password)
+      if (user) {
+        dispatch(setUser(user))
+        navigate('/research')
       } else {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              name,
-              occupation,
-              geolocation,
-            },
-          },
-        })
-
-        if (error) throw error
-
-        if (data.user) {
-          dispatch(setUser({
-            id: data.user.id,
-            email: data.user.email!,
-            name,
-            occupation,
-            geolocation,
-          }))
-          navigate('/research')
-        }
+        setError('Invalid username or password')
       }
     } catch (error) {
-      if (error instanceof Error) {
-        setError(error.message)
-        dispatch(setAuthError(error.message))
+      console.error('Login error:', error)
+      setError('Failed to log in. Please try again.')
+    }
+  }
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      const userData = {
+        'User-Name': userName,
+        'PassWord': password,
+        'Occupation': occupation,
+        'Location': location,
+        title: '',
+        content: '',
+        references: ''
       }
+      
+      const newUser = await createUser(userData)
+      dispatch(setUser(newUser))
+      navigate('/research')
+    } catch (error: any) {
+      console.error('Signup error:', error)
+      setError(error.message || 'Failed to create account. Please try again.')
     }
   }
 
   return (
-    <Container component="main" maxWidth="xs">
-      <Paper
-        elevation={3}
-        sx={{
-          marginTop: 8,
-          padding: 4,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
-        <Typography component="h1" variant="h5">
-          {isLogin ? 'Sign In' : 'Create Account'}
+    <Container component="main" maxWidth="sm">
+      <Paper elevation={6} sx={{ mt: 8, p: 4 }}>
+        <Typography component="h1" variant="h5" align="center" gutterBottom>
+          AI Researcher Assistant
         </Typography>
+        
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+          <Tabs value={tab} onChange={handleTabChange} centered>
+            <Tab label="Login" />
+            <Tab label="Sign Up" />
+          </Tabs>
+        </Box>
 
         {error && (
-          <Alert severity="error" sx={{ mt: 2, width: '100%' }}>
+          <Alert severity="error" sx={{ mb: 2 }}>
             {error}
           </Alert>
         )}
 
-        <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
-          <Grid container spacing={2}>
-            {!isLogin && (
-              <Grid item xs={12}>
-                <TextField
-                  required
-                  fullWidth
-                  label="Full Name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </Grid>
-            )}
-            <Grid item xs={12}>
-              <TextField
-                required
-                fullWidth
-                label="Email Address"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                required
-                fullWidth
-                label="Password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </Grid>
-            {!isLogin && (
-              <>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Occupation"
-                    value={occupation}
-                    onChange={(e) => setOccupation(e.target.value)}
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Location"
-                    value={geolocation}
-                    onChange={(e) => setGeolocation(e.target.value)}
-                  />
-                </Grid>
-              </>
-            )}
-          </Grid>
+        <TabPanel value={tab} index={0}>
+          <form onSubmit={handleLogin}>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              label="Username"
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <Button
+              type="submit"
+              fullWidth
+              variant="contained"
+              sx={{ mt: 3, mb: 2 }}
+            >
+              Login
+            </Button>
+          </form>
+        </TabPanel>
 
-          <Button
-            type="submit"
-            fullWidth
-            variant="contained"
-            sx={{ mt: 3, mb: 2 }}
-          >
-            {isLogin ? 'Sign In' : 'Create Account'}
-          </Button>
-
-          <Grid container justifyContent="flex-end">
-            <Grid item>
-              <Link
-                component="button"
-                variant="body2"
-                onClick={() => setIsLogin(!isLogin)}
-              >
-                {isLogin
-                  ? "Don't have an account? Sign Up"
-                  : 'Already have an account? Sign In'}
-              </Link>
-            </Grid>
-          </Grid>
-        </Box>
+        <TabPanel value={tab} index={1}>
+          <form onSubmit={handleSignup}>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              label="Username"
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              label="Occupation"
+              value={occupation}
+              onChange={(e) => setOccupation(e.target.value)}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              label="Location"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+            />
+            <Button
+              type="submit"
+              fullWidth
+              variant="contained"
+              sx={{ mt: 3, mb: 2 }}
+            >
+              Sign Up
+            </Button>
+          </form>
+        </TabPanel>
       </Paper>
     </Container>
   )
 }
-
-export default AuthPage

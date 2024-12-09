@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import axios from 'axios'
 import { ResearchMode, ResearchType } from '../store/slices/researchSlice';
+import { ResearchError, ResearchException, TOKEN_LIMITS } from './researchErrors';
+import { validateOutlineStructure } from './outlineValidation';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -13,12 +15,19 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // Initialize Axios instances
 const groqApi = axios.create({
-  baseURL: GROQ_API_URL,
+  baseURL: GROQ_API_URL || 'https://api.groq.com/openai/v1/chat/completions',
   headers: {
     'Authorization': `Bearer ${GROQ_API_KEY}`,
     'Content-Type': 'application/json',
   },
-})
+});
+
+// Ensure trailing slash is handled correctly
+groqApi.interceptors.request.use((config) => {
+  // Remove any trailing slashes from baseURL
+  config.baseURL = config.baseURL?.replace(/\/+$/, '');
+  return config;
+});
 
 const searchApi = axios.create({
   baseURL: SEARCH_API_URL,
@@ -39,14 +48,24 @@ const GROQ_CONFIG = {
   MAX_TOKENS: 2000
 };
 
+let lastApiCallTime = 0;
+
 // Centralized delay management
 export const waitBetweenCalls = async (retryCount: number = 0): Promise<void> => {
+  const currentTime = Date.now();
+  const timeSinceLastCall = currentTime - lastApiCallTime;
   const delay = retryCount > 0 
     ? Math.max(GROQ_CONFIG.RETRY_DELAY * retryCount, GROQ_CONFIG.MIN_DELAY)
     : GROQ_CONFIG.MIN_DELAY;
   
-  console.log(`Waiting ${delay/1000} seconds before next API call${retryCount > 0 ? ` (retry ${retryCount})` : ''}...`);
-  await new Promise(resolve => setTimeout(resolve, delay));
+  const remainingDelay = Math.max(0, delay - timeSinceLastCall);
+  
+  if (remainingDelay > 0) {
+    console.log(`Waiting ${remainingDelay/1000} seconds before next API call${retryCount > 0 ? ` (retry ${retryCount})` : ''}...`);
+    await new Promise(resolve => setTimeout(resolve, remainingDelay));
+  }
+  
+  lastApiCallTime = Date.now();
 };
 
 // Helper function for API calls with retry logic
@@ -56,19 +75,50 @@ const makeApiCall = async <T>(
   retryCount: number = 0
 ): Promise<T> => {
   try {
-    console.log(`Making API call (attempt ${retryCount + 1})...`);
+    // Check if API key is configured
+    if (!GROQ_API_KEY) {
+      throw new ResearchException(ResearchError.API_ERROR, 'GROQ API key is not configured');
+    }
+
+    await waitBetweenCalls(retryCount);
     const result = await callFn();
+    lastApiCallTime = Date.now(); // Update last API call time
     return result;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`${errorMsg}:`, error);
     
-    if (retryCount >= GROQ_CONFIG.MAX_RETRIES - 1) {
-      throw new Error(`${errorMsg} after ${GROQ_CONFIG.MAX_RETRIES} attempts`);
+    // Handle rate limiting
+    if (error.response?.status === 429 || (error.message && error.message.includes('rate limit'))) {
+      if (retryCount < GROQ_CONFIG.MAX_RETRIES) {
+        console.log(`Rate limit hit, retrying (${retryCount + 1}/${GROQ_CONFIG.MAX_RETRIES})...`);
+        return makeApiCall(callFn, errorMsg, retryCount + 1);
+      }
+      throw new ResearchException(ResearchError.API_ERROR, 'Rate limit exceeded after multiple retries');
     }
     
-    console.log(`Retrying in ${GROQ_CONFIG.RETRY_DELAY/1000} seconds...`);
-    await waitBetweenCalls(retryCount + 1);
-    return makeApiCall(callFn, errorMsg, retryCount + 1);
+    // Handle authentication errors
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      throw new ResearchException(ResearchError.API_ERROR, 'Invalid API key or authentication failed');
+    }
+
+    // Handle network errors
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      throw new ResearchException(ResearchError.API_ERROR, 'Network error: Unable to connect to the research service');
+    }
+
+    // Handle timeout errors
+    if (error.code === 'ETIMEDOUT' || error.code === 'ESOCKETTIMEDOUT') {
+      throw new ResearchException(
+        ResearchError.TIMEOUT_ERROR,
+        'Request timed out'
+      );
+    }
+
+    // Handle other errors
+    throw new ResearchException(
+      ResearchError.API_ERROR,
+      errorMsg + (error.message ? `: ${error.message}` : '')
+    );
   }
 };
 
@@ -291,7 +341,21 @@ export const generateOutline = async (topic: string): Promise<string> => {
 
         const response = await makeApiCall(
           async () => {
-            const response = await fetch(`${GROQ_API_URL}/chat/completions`, {
+            const messages = [
+              { role: 'system', content: 'You are a research outline generator. Generate detailed outlines with specific section counts and formatting.' },
+              { role: 'user', content: prompt }
+            ];
+
+            // Calculate total tokens and check limits
+            const totalTokens = messages.reduce((acc, msg) => acc + estimateTokens(msg.content), 0);
+            if (totalTokens > TOKEN_LIMITS.MAX_PROMPT_TOKENS) {
+              throw new ResearchException(
+                ResearchError.TOKEN_LIMIT_EXCEEDED,
+                'The combined prompt is too long. Please provide a shorter topic or reduce requirements.'
+              );
+            }
+
+            const response = await fetch(GROQ_API_URL, {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${GROQ_API_KEY}`,
@@ -299,16 +363,7 @@ export const generateOutline = async (topic: string): Promise<string> => {
               },
               body: JSON.stringify({
                 model: GROQ_CONFIG.MODEL,
-                messages: [
-                  {
-                    role: 'system',
-                    content: 'You are a research outline generator. Generate detailed outlines with specific section counts and formatting.'
-                  },
-                  {
-                    role: 'user',
-                    content: prompt
-                  }
-                ],
+                messages,
                 temperature: 0.7,
                 max_tokens: 1000,
               }),
@@ -351,7 +406,19 @@ export const generateOutline = async (topic: string): Promise<string> => {
 
 export const generateDetailedOutline = async (topic: string, mode: ResearchMode, type: ResearchType): Promise<string> => {
   if (!topic || !mode || type === undefined) {
-    throw new Error('Missing required parameters: topic, mode, and type are required');
+    throw new ResearchException(
+      ResearchError.VALIDATION_FAILED,
+      'Missing required parameters: topic, mode, and type are required'
+    );
+  }
+
+  // Estimate tokens in the topic
+  const topicTokens = estimateTokens(topic);
+  if (topicTokens > TOKEN_LIMITS.MAX_PROMPT_TOKENS) {
+    throw new ResearchException(
+      ResearchError.TOKEN_LIMIT_EXCEEDED,
+      'Research topic is too long. Please provide a shorter topic.'
+    );
   }
 
   let minSections: number;
@@ -359,34 +426,35 @@ export const generateDetailedOutline = async (topic: string, mode: ResearchMode,
   let includeSubsections: boolean;
   let requireAbstractConclusion: boolean;
   
-  // Determine section counts based on both mode and type
-  if (type === ResearchType.Article) {
-    // Article type always has 3-5 sections regardless of mode
-    minSections = 3;
-    maxSections = 5;
-    includeSubsections = false;
-    requireAbstractConclusion = false;
-  } else {
-    // For all other types (General, Literature, Experiment)
-    switch (mode) {
-      case ResearchMode.Basic:
-        minSections = 11;
-        maxSections = 15;
+  // Section counts based on mode and type
+  switch (mode) {
+    case ResearchMode.Advanced:
+      if (type === ResearchType.Article) {
+        minSections = 3;
+        maxSections = 5;
         includeSubsections = false;
-        requireAbstractConclusion = true;
-        break;
-      case ResearchMode.Advanced:
-        minSections = 42;
-        maxSections = 50;
+      } else {
+        // Advanced mode section counts
+        minSections = 25;
+        maxSections = 52;
         includeSubsections = true;
-        requireAbstractConclusion = true;
-        break;
-      default:
-        minSections = 11;
-        maxSections = 15;
+      }
+      requireAbstractConclusion = type !== ResearchType.Article;
+      break;
+    
+    case ResearchMode.Basic:
+    default:
+      if (type === ResearchType.Article) {
+        minSections = 3;
+        maxSections = 5;
         includeSubsections = false;
-        requireAbstractConclusion = true;
-    }
+      } else {
+        minSections = 8;
+        maxSections = 12;
+        includeSubsections = false;
+      }
+      requireAbstractConclusion = type !== ResearchType.Article;
+      break;
   }
 
   const getTypeString = (researchType: ResearchType): string => {
@@ -405,137 +473,198 @@ export const generateDetailedOutline = async (topic: string, mode: ResearchMode,
   };
 
   const typeString = getTypeString(type);
+  const systemPrompt = `You are a research outline generator. Create a detailed outline for a ${typeString} on the topic: "${topic}".
+Requirements:
+- Generate between ${minSections} to ${maxSections} total sections (including main sections and subsections)
+${includeSubsections ? '- Each main section MUST have 2-3 subsections (this is required)\n- Aim for 8-15 main sections with their subsections adding up to ${minSections}-${maxSections} total\n' : ''}
+${requireAbstractConclusion ? '- Must include Abstract and Conclusion sections\n' : ''}
+- Each section and subsection must have 2-3 key points or requirements
+- Use clear, academic language
+- Ensure logical flow and progression of ideas
+- Format using numbers for main sections (1., 2., 3.) and decimal numbers for subsections (1.1., 1.2., 1.3.)
+- Include "Requirements:" after each section and subsection title followed by bullet points
+- IMPORTANT: The outline MUST contain at least ${minSections} total sections (main sections + subsections)
+- Keep the total response under ${TOKEN_LIMITS.MAX_COMPLETION_TOKENS} tokens
 
-  const sectionInstructions = type === ResearchType.Article
-    ? `CRITICAL: Generate EXACTLY between ${minSections} and ${maxSections} main sections (no more, no less).
-       Do NOT include Abstract or Conclusion sections.
-       Each section must be a core content section.
-       Number sections sequentially from 1 to ${maxSections}.
-       DO NOT use subsections.`
-    : `Generate between ${minSections} and ${maxSections} ${includeSubsections ? 'total sections and subsections' : 'main sections'}.
-       ${requireAbstractConclusion ? 'Start with an Abstract section and end with a Conclusion section.' : ''}
-       ${includeSubsections ? 'Use subsections (e.g., 1.1, 1.2) to organize related content.' : ''}`;
+Example format for Basic/Article mode (3-5 sections):
+1. Introduction
+Requirements:
+- Provide background on the topic
+- State research objectives
+- Outline methodology
 
-  const prompt = `Create a detailed outline for a ${typeString} research paper about "${topic}".
+2. Literature Review
+Requirements:
+- Review current research
+- Identify key findings
+- Highlight research gaps
 
-    ${sectionInstructions}
+3. Methodology
+Requirements:
+- Research approach
+- Data collection methods
+- Analysis techniques
 
-    Format each section as:
-    [Number]. [Title]
-    Requirements:
-    - [Requirement 1]
-    - [Requirement 2]
-    - [Requirement 3]
+4. Results and Discussion
+Requirements:
+- Present key findings
+- Analyze implications
+- Compare with existing research
 
-    CRITICAL RULES:
-    1. Section count must be:
-       ${type === ResearchType.Article 
-         ? `EXACTLY between ${minSections}-${maxSections} main sections, no subsections` 
-         : includeSubsections 
-           ? `${minSections}-${maxSections} total sections and subsections combined` 
-           : `${minSections}-${maxSections} main sections`}
-    2. Each section must have a clear, descriptive title
-    3. Each section must include 2-3 specific requirements
-    4. Ensure logical flow between sections`;
+5. Conclusion
+Requirements:
+- Summarize findings
+- State limitations
+- Suggest future research
 
+Example format for Advanced mode (with subsections):
+1. Abstract
+Requirements:
+- Provide overview of the research
+- State main findings
+- Highlight key conclusions
+
+2. Introduction
+Requirements:
+- Provide background on the topic
+- State research objectives
+- Outline methodology
+
+2.1. Background Context
+Requirements:
+- Historical development of the field
+- Current state of research
+- Key challenges and gaps
+
+2.2. Research Objectives
+Requirements:
+- Primary research goals
+- Specific objectives
+- Expected outcomes
+
+3. [Next Section Title]
+Requirements:
+- [Requirement 1]
+- [Requirement 2]
+- [Requirement 3]
+
+3.1. [Subsection Title]
+Requirements:
+- [Requirement 1]
+- [Requirement 2]
+- [Requirement 3]`;
+
+  const prompt = `Generate a detailed research outline for: ${topic}. The outline must have at least ${minSections} total sections.`;
+  
   try {
-    const makeRequest = async () => {
-      const response = await fetch(GROQ_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${GROQ_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: GROQ_CONFIG.MODEL,
-          messages: [
-            {
-              role: 'system',
-              content: `You are a research outline generator that strictly enforces section count limits.
-                ${type === ResearchType.Article 
-                  ? `For Article type: You MUST generate EXACTLY ${minSections}-${maxSections} main sections.
-                     DO NOT include Abstract or Conclusion.
-                     DO NOT use subsections.
-                     This is CRITICAL - the outline will be rejected if it doesn't meet these requirements.`
-                  : `For ${typeString} type in ${mode} mode: Generate ${minSections}-${maxSections} ${includeSubsections ? 'total sections and subsections' : 'main sections'}.
-                     ${requireAbstractConclusion ? 'Include Abstract and Conclusion sections.' : ''}`
-                }`
-            },
-            {
-              role: 'user',
-              content: prompt
+    let retryCount = 0;
+    const maxRetries = 3;
+    const maxAttemptTime = 30000; // 30 seconds timeout
+
+    while (retryCount < maxRetries) {
+      try {
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new ResearchException(
+              ResearchError.TIMEOUT_ERROR,
+              'Outline generation timed out after 30 seconds'
+            ));
+          }, maxAttemptTime);
+        });
+
+        const outlinePromise = makeApiCall(
+          async () => {
+            const messages = [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: prompt }
+            ];
+
+            // Calculate total tokens and check limits
+            const totalTokens = messages.reduce((acc, msg) => acc + estimateTokens(msg.content), 0);
+            if (totalTokens > TOKEN_LIMITS.MAX_PROMPT_TOKENS) {
+              throw new ResearchException(
+                ResearchError.TOKEN_LIMIT_EXCEEDED,
+                'The combined prompt is too long. Please provide a shorter topic or reduce requirements.'
+              );
             }
-          ],
-          temperature: GROQ_CONFIG.TEMPERATURE,
-          max_tokens: GROQ_CONFIG.MAX_TOKENS
-        })
-      });
 
-      if (!response.ok) {
-        if (response.status === 429) {
-          throw new Error('Rate limit exceeded');
+            const response = await fetch(GROQ_API_URL, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${GROQ_API_KEY}`
+              },
+              body: JSON.stringify({
+                model: GROQ_CONFIG.MODEL,
+                messages,
+                temperature: 0.7,
+                max_tokens: TOKEN_LIMITS.MAX_COMPLETION_TOKENS,
+                top_p: 1,
+                stream: false
+              })
+            });
+
+            if (!response.ok) {
+              throw new ResearchException(
+                ResearchError.API_ERROR,
+                `API request failed with status ${response.status}`
+              );
+            }
+
+            return response.json();
+          },
+          'Failed to generate outline'
+        );
+
+        const response = await Promise.race([outlinePromise, timeoutPromise]);
+        const outline = response.choices[0].message.content.trim();
+
+        // Validate the generated outline
+        const validation = validateOutlineStructure(outline, mode, type);
+        if (!validation.isValid) {
+          throw new ResearchException(
+            ResearchError.VALIDATION_FAILED,
+            `Invalid outline structure: ${validation.reason}`
+          );
         }
-        throw new Error(`API request failed: ${response.status}`);
-      }
 
-      const data = await response.json();
-      if (!data.choices?.[0]?.message?.content) {
-        throw new Error('No completion content received');
-      }
+        return outline;
 
-      return data.choices[0].message.content;
-    };
-
-    const retryWithBackoff = async (fn: () => Promise<any>, maxRetries: number = 3): Promise<any> => {
-      for (let i = 0; i < maxRetries; i++) {
-        try {
-          return await fn();
-        } catch (error: any) {
-          if (error?.message === 'Rate limit exceeded' && i < maxRetries - 1) {
-            const waitTime = Math.pow(2, i) * 1000; // Exponential backoff
-            console.log(`Rate limit hit, waiting ${waitTime}ms before retry ${i + 1}/${maxRetries}`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            continue;
+      } catch (error) {
+        console.error(`Attempt ${retryCount + 1} failed:`, error);
+        
+        if (error instanceof ResearchException) {
+          if (error.type === ResearchError.TIMEOUT_ERROR ||
+              error.type === ResearchError.TOKEN_LIMIT_EXCEEDED ||
+              error.type === ResearchError.VALIDATION_FAILED) {
+            throw error; // Don't retry these errors
           }
-          throw error;
         }
+
+        if (retryCount === maxRetries - 1) {
+          throw new ResearchException(
+            ResearchError.API_ERROR,
+            `Failed to generate outline after ${maxRetries} attempts: ${error instanceof Error ? error.message : 'Unknown error'}`
+          );
+        }
+
+        retryCount++;
+        await waitBetweenCalls(retryCount);
       }
-      throw new Error('Max retries exceeded');
-    };
-
-    const response = await retryWithBackoff(makeRequest);
-    
-    // Validate section count
-    const sectionCount = (response.match(/^\d+\./gm) || []).length;
-    const subsectionCount = (response.match(/^\d+\.\d+\./gm) || []).length;
-    const totalCount = type === ResearchType.Article ? sectionCount : (sectionCount + (includeSubsections ? subsectionCount : 0));
-
-    console.log(`Generated outline stats:
-      Type: ${typeString}
-      Mode: ${mode}
-      Main sections: ${sectionCount}
-      Subsections: ${subsectionCount}
-      Total count: ${totalCount}
-      Expected range: ${minSections}-${maxSections}`);
-
-    if (totalCount < minSections || totalCount > maxSections) {
-      console.warn(`Generated outline has ${totalCount} sections, expected ${minSections}-${maxSections}. Regenerating...`);
-      return generateDetailedOutline(topic, mode, type); // Recursively try again
     }
 
-    if (type === ResearchType.Article && subsectionCount > 0) {
-      console.warn('Article type contains subsections. Regenerating...');
-      return generateDetailedOutline(topic, mode, type);
-    }
-
-    return response;
+    throw new ResearchException(
+      ResearchError.API_ERROR,
+      'Failed to generate outline after maximum retries'
+    );
   } catch (error) {
-    console.error('Error generating outline:', error);
-    if (error instanceof Error) {
-      throw new Error(`Failed to generate outline: ${error.message}`);
-    } else {
-      throw new Error('Failed to generate outline: Unknown error');
+    if (error instanceof ResearchException) {
+      throw error;
     }
+    throw new ResearchException(
+      ResearchError.API_ERROR,
+      `Unexpected error in outline generation: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
   }
 };
 
@@ -553,73 +682,83 @@ export const parseSectionsFromOutline = (outline: string): string[] => {
 };
 
 export const generateReferences = async (topic: string, citationStyle: string = 'APA'): Promise<string[]> => {
-  try {
-    const maxRetries = 5;
-    const baseDelay = 15000;
-    let retryCount = 0;
+  const maxRetries = 5;
+  const baseDelay = 15000;
+  let retryCount = 0;
 
-    const prompt = `Generate a list of academic references for research on "${topic}".
-    Requirements:
-    - Use ${citationStyle} citation style
-    - Include at least 10-15 references
-    - Focus on recent publications (2015-2024)
-    - Include journal articles, books, and conference papers
-    - Format each reference on a new line
-    - Ensure citations are complete with all required elements`;
+  const prompt = `Generate a list of academic references for research on "${topic}".
+  Requirements:
+  - Use ${citationStyle} citation style
+  - Include at least 10-15 references
+  - Focus on recent publications (2015-2024)
+  - Include journal articles, books, and conference papers
+  - Format each reference on a new line
+  - Ensure citations are complete with all required elements`;
 
-    while (retryCount < maxRetries) {
-      try {
-        if (retryCount > 0) {
-          console.log(`Attempt ${retryCount + 1}/${maxRetries} for references generation`);
-          await new Promise(resolve => setTimeout(resolve, baseDelay));
-        }
-
-        const response = await makeApiCall(
-          async () => {
-            const response = await fetch(`${GROQ_API_URL}/chat/completions`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${GROQ_API_KEY}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                model: GROQ_CONFIG.MODEL,
-                messages: [
-                  {
-                    role: 'system',
-                    content: 'You are an expert academic researcher creating a reference list. Format each reference according to the specified citation style.'
-                  },
-                  {
-                    role: 'user',
-                    content: prompt
-                  }
-                ],
-                temperature: 0.7,
-                max_tokens: 2000,
-              }),
-            });
-            return response.json();
-          },
-          'Failed to generate references'
-        );
-
-        const data = await response;
-        const content = data.choices[0].message.content;
-        return content.split('\n').filter(line => line.trim().length > 0);
-      } catch (error) {
-        if (retryCount === maxRetries - 1) {
-          throw error;
-        }
-        console.error(`Error on attempt ${retryCount + 1}/${maxRetries}:`, error);
-        retryCount++;
+  while (retryCount < maxRetries) {
+    try {
+      if (retryCount > 0) {
+        console.log(`Attempt ${retryCount + 1}/${maxRetries} for references generation`);
+        await new Promise(resolve => setTimeout(resolve, baseDelay * retryCount));
       }
-    }
 
-    throw new Error('Failed to generate references after maximum retries');
-  } catch (error) {
-    console.error('Error in generateReferences:', error);
-    throw error;
+      const response = await fetch(GROQ_API_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: GROQ_CONFIG.MODEL,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert academic researcher creating a reference list. Format each reference according to the specified citation style.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 2000,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data || !data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error('Invalid response format from API');
+      }
+
+      const content = data.choices[0].message.content;
+      const references = content.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+      if (references.length === 0) {
+        throw new Error('No references generated');
+      }
+
+      return references;
+    } catch (error) {
+      console.error(`Error on attempt ${retryCount + 1}/${maxRetries}:`, error);
+      retryCount++;
+      
+      if (retryCount === maxRetries) {
+        console.error('Failed to generate references after all retries');
+        return ['Error: Failed to generate references. Please try again.'];
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, baseDelay * retryCount));
+    }
   }
+
+  return ['Error: Failed to generate references after all retries'];
 };
 
 // Semantic Scholar API calls

@@ -6,11 +6,15 @@ import Layout from './components/Layout'
 import LandingPage from './pages/LandingPage'
 import AuthPage from './pages/AuthPage'
 import ResearchPage from './pages/ResearchPage'
+import { initializeAuth } from './services/authService'
 
 function App() {
   const location = useLocation()
 
   useEffect(() => {
+    // Initialize auth on mount
+    initializeAuth()
+    
     // Force redirect to landing page if we're at research page initially
     if (location.pathname === '/research' && !sessionStorage.getItem('visited')) {
       window.location.href = '/'

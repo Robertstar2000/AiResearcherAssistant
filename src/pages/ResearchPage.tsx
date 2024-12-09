@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import {
   Box,
@@ -40,6 +40,8 @@ import { RootState } from '../store'
 import { generateTitle, generateDetailedOutline } from '../services/api'
 import { generateResearch } from '../services/researchService'
 import { generateMarkup, generatePDF, generateDOCX, downloadDocument } from '../services/documentService';
+import { saveResearchEntry, initializeRealtimeSubscription } from '../services/databaseService'
+import { ResearchError, ResearchException } from '../services/researchErrors';
 import EditIcon from '@mui/icons-material/Edit'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
@@ -51,6 +53,7 @@ import ArticleIcon from '@mui/icons-material/Article';
 const ResearchPage = () => {
   const dispatch = useDispatch()
   const research = useSelector((state: RootState) => state.research)
+  const user = useSelector((state: RootState) => state.auth.user)
   const [query, setQuery] = useState('')
   const [editingTitle, setEditingTitle] = useState(false)
   const [editedTitle, setEditedTitle] = useState('')
@@ -109,25 +112,27 @@ const ResearchPage = () => {
 
   const handleGenerateResearch = async () => {
     if (!research.title) {
-      dispatch(setError('Please generate a title first'))
-      return
+      dispatch(setError('Please generate a title first'));
+      return;
     }
 
     if (!research.mode || research.type === undefined) {
-      dispatch(setError('Research mode and type are required'))
-      return
+      dispatch(setError('Research mode and type are required'));
+      return;
     }
 
     setIsLoading(true);
-    setCanExport(false); // Disable export buttons at start
+    setCanExport(false);
     dispatch(setError(null));
     dispatch(setSections([]));
     dispatch(setReferences([]));
+    
+    // Set initial progress to 3%
+    updateProgress(3, 100, 'Initializing research generation...');
 
     try {
       console.log('Generating research for:', research.title, 'Mode:', research.mode, 'Type:', research.type);
       
-      // Generate research content
       const { sections, references, outline } = await generateResearch(
         research.title,
         research.mode,
@@ -136,9 +141,24 @@ const ResearchPage = () => {
         updateProgress
       );
 
-      setOutline(outline); // Store outline for display
+      setOutline(outline);
       dispatch(setSections(sections));
       dispatch(setReferences(references));
+
+      await saveResearchEntry({
+        user_id: user?.id || '',
+        title: research.title,
+        content: {
+          sections,
+          outline,
+          mode: research.mode,
+          type: research.type,
+          citationStyle: research.citationStyle
+        },
+        references,
+        some_column: 'some_value'
+      });
+
       dispatch(addToHistory({
         id: Date.now().toString(),
         title: research.title,
@@ -146,17 +166,42 @@ const ResearchPage = () => {
         references,
         timestamp: new Date().toISOString()
       }));
-      setCanExport(true); // Enable export buttons on success
-    } catch (error) {
-      console.error('Error in handleGenerateResearch:', error)
-      if (error instanceof Error) {
-        dispatch(setError(error.message))
+
+      if (sections.length > 0) {
+        setCanExport(true);
+        console.log('Export enabled: Content generation complete');
       }
-      setCanExport(false); // Keep export buttons disabled on error
+    } catch (error) {
+      console.error('Error in handleGenerateResearch:', error);
+      let errorMessage = 'An unexpected error occurred';
+      
+      if (error instanceof ResearchException) {
+        switch (error.type) {
+          case ResearchError.TOKEN_LIMIT_EXCEEDED:
+            errorMessage = 'The research topic is too long. Please provide a shorter topic.';
+            break;
+          case ResearchError.VALIDATION_FAILED:
+            errorMessage = `Failed to generate a valid outline: ${error.message}`;
+            break;
+          case ResearchError.TIMEOUT_ERROR:
+            errorMessage = 'The outline generation timed out. Please try again.';
+            break;
+          case ResearchError.API_ERROR:
+            errorMessage = 'Failed to communicate with the research service. Please try again.';
+            break;
+          default:
+            errorMessage = error.message;
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      dispatch(setError(errorMessage));
+      setCanExport(false);
     } finally {
       setIsLoading(false);
     }
-  }
+  };
 
   const handleTitleEdit = () => {
     setEditedTitle(research.title)
@@ -175,27 +220,153 @@ const ResearchPage = () => {
     setEditedTitle('')
   }
 
+  const renderProgress = () => {
+    if (!isLoading) return null;
+    
+    return (
+      <Box sx={{ width: '100%', mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CircularProgress size={20} />
+            <Typography variant="body2" color="text.secondary">
+              {statusMessage}
+            </Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary">
+            {Math.round(progress)}%
+          </Typography>
+        </Box>
+        <LinearProgress 
+          variant="determinate" 
+          value={progress} 
+          sx={{ 
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: 'grey.200',
+            '& .MuiLinearProgress-bar': {
+              borderRadius: 4,
+              backgroundColor: 'primary.main'
+            }
+          }}
+        />
+      </Box>
+    );
+  };
+
   const renderOutlineButton = () => (
     <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
       <Tooltip title={outline ? "View Research Outline" : "Generate research to view outline"}>
         <span>
-          <IconButton 
+          <Button
+            variant="contained"
             onClick={() => setOutlineOpen(true)}
             disabled={!outline}
-            color="primary"
+            startIcon={<FormatListBulletedIcon />}
             sx={{ 
-              border: '1px solid',
-              borderColor: 'primary.main',
+              minWidth: '200px',
+              backgroundColor: outline ? 'primary.main' : 'grey.500',
               '&:hover': {
-                backgroundColor: 'primary.light',
+                backgroundColor: outline ? 'primary.dark' : 'grey.600'
+              },
+              '&.Mui-disabled': {
+                backgroundColor: 'grey.300',
+                color: 'grey.500'
               }
             }}
           >
-            <FormatListBulletedIcon />
-          </IconButton>
+            View Outline
+          </Button>
         </span>
       </Tooltip>
     </Box>
+  );
+
+  const renderSettings = () => (
+    <Paper elevation={3} sx={{ p: 3, height: '100%' }}>
+      <Typography variant="h6" gutterBottom>
+        Research Settings
+      </Typography>
+      
+      <FormControl fullWidth sx={{ mb: 2 }}>
+        <InputLabel>Mode</InputLabel>
+        <Select
+          value={research.mode}
+          label="Mode"
+          onChange={handleModeChange}
+        >
+          <MenuItem value={ResearchMode.Basic}>Basic</MenuItem>
+          <MenuItem value={ResearchMode.Advanced}>Advanced</MenuItem>
+        </Select>
+      </FormControl>
+
+      <FormControl fullWidth sx={{ mb: 2 }}>
+        <InputLabel>Type</InputLabel>
+        <Select
+          value={research.type}
+          label="Type"
+          onChange={handleTypeChange}
+        >
+          <MenuItem value={ResearchType.Article}>Article</MenuItem>
+          <MenuItem value={ResearchType.General}>General Research</MenuItem>
+          <MenuItem value={ResearchType.Literature}>Literature Review</MenuItem>
+          <MenuItem value={ResearchType.Experiment}>Experiment Design</MenuItem>
+        </Select>
+      </FormControl>
+
+      <FormControl fullWidth sx={{ mb: 4 }}>
+        <InputLabel>Citation Style</InputLabel>
+        <Select
+          value={research.citationStyle}
+          label="Citation Style"
+          onChange={handleCitationStyleChange}
+        >
+          <MenuItem value={CitationStyle.APA}>APA</MenuItem>
+          <MenuItem value={CitationStyle.MLA}>MLA</MenuItem>
+          <MenuItem value={CitationStyle.Chicago}>Chicago</MenuItem>
+        </Select>
+      </FormControl>
+
+      <Paper 
+        elevation={1} 
+        sx={{ 
+          p: 2, 
+          mb: 2, 
+          backgroundColor: 'background.default',
+          border: '1px solid',
+          borderColor: 'divider'
+        }}
+      >
+        <Typography variant="subtitle2" color="primary" gutterBottom sx={{ fontSize: '0.8rem' }}>
+          Instructions
+        </Typography>
+        <Box component="ol" sx={{ pl: 2, m: 0 }}>
+          <Typography component="li" variant="body2" sx={{ mb: 0.5, fontSize: '0.75rem' }}>
+            Enter your research topic in the search field
+          </Typography>
+          <Typography component="li" variant="body2" sx={{ mb: 0.5, fontSize: '0.75rem' }}>
+            Click "Generate Title" to create a formal research title
+          </Typography>
+          <Typography component="li" variant="body2" sx={{ mb: 0.5, fontSize: '0.75rem' }}>
+            Select Mode (Basic: 8-10 sections, Advanced: 30-40 sections)
+          </Typography>
+          <Typography component="li" variant="body2" sx={{ mb: 0.5, fontSize: '0.75rem' }}>
+            Choose Type (Article, General Research, Literature Review, or Experiment)
+          </Typography>
+          <Typography component="li" variant="body2" sx={{ mb: 0.5, fontSize: '0.75rem' }}>
+            Select Citation Style (APA, MLA, or Chicago)
+          </Typography>
+          <Typography component="li" variant="body2" sx={{ mb: 0.5, fontSize: '0.75rem' }}>
+            Click "Generate Research" to create your document
+          </Typography>
+          <Typography component="li" variant="body2" sx={{ mb: 0.5, fontSize: '0.75rem' }}>
+            Review the outline using the outline button
+          </Typography>
+          <Typography component="li" variant="body2" sx={{ fontSize: '0.75rem' }}>
+            Export to your preferred format (Markup, PDF, or Word)
+          </Typography>
+        </Box>
+      </Paper>
+    </Paper>
   );
 
   const OutlineDialog = () => (
@@ -204,20 +375,71 @@ const ResearchPage = () => {
       onClose={() => setOutlineOpen(false)}
       maxWidth="md"
       fullWidth
+      PaperProps={{
+        sx: { 
+          minHeight: '80vh',
+          maxHeight: '90vh',
+          overflow: 'hidden'
+        }
+      }}
     >
-      <DialogTitle>
-        Research Outline
+      <DialogTitle sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        borderBottom: '1px solid rgba(0, 0, 0, 0.12)',
+        backgroundColor: 'primary.main',
+        color: 'white',
+        p: 2
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <FormatListBulletedIcon />
+          <Typography variant="h6">Research Outline</Typography>
+        </Box>
         <IconButton
           aria-label="close"
           onClick={() => setOutlineOpen(false)}
-          sx={{ position: 'absolute', right: 8, top: 8 }}
+          size="small"
+          sx={{ color: 'white' }}
         >
           <CloseIcon />
         </IconButton>
       </DialogTitle>
-      <DialogContent dividers>
-        <Box sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
-          {outline}
+      <DialogContent sx={{ p: 0 }}>
+        <Box sx={{ 
+          whiteSpace: 'pre-wrap', 
+          fontFamily: 'monospace',
+          fontSize: '1rem',
+          lineHeight: 1.6,
+          p: 3,
+          height: '100%',
+          overflow: 'auto'
+        }}>
+          {outline.split('\n').map((line, index) => {
+            // Add indentation based on section level
+            const level = (line.match(/^\d+(\.\d+)*\./) || [''])[0].split('.').length - 1;
+            const indent = level * 24; // 24px indent per level
+            
+            // Style section titles differently
+            const isTitle = line.match(/^\d+(\.\d+)*\./);
+            const isRequirement = line.trim().startsWith('-');
+            
+            return (
+              <div 
+                key={index} 
+                style={{ 
+                  paddingLeft: `${indent}px`,
+                  marginBottom: '0.5rem',
+                  color: isTitle ? '#1976d2' : 
+                         isRequirement ? '#666' : 'inherit',
+                  fontWeight: isTitle ? 600 : 
+                              isRequirement ? 400 : 500
+                }}
+              >
+                {line}
+              </div>
+            );
+          })}
         </Box>
       </DialogContent>
     </Dialog>
@@ -270,18 +492,22 @@ const ResearchPage = () => {
   };
 
   const exportButtons = (
-    <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+    <Box sx={{ display: 'flex', gap: 2, mt: 2, mb: 2 }}>
       <Button
         variant="contained"
         onClick={handleExportMarkup}
         disabled={!canExport}
+        startIcon={<DescriptionIcon />}
         sx={{ 
           backgroundColor: canExport ? 'primary.main' : 'grey.500',
           '&:hover': {
             backgroundColor: canExport ? 'primary.dark' : 'grey.600'
+          },
+          '&.Mui-disabled': {
+            backgroundColor: 'grey.300',
+            color: 'grey.500'
           }
         }}
-        startIcon={<DescriptionIcon />}
       >
         Markup
       </Button>
@@ -289,13 +515,17 @@ const ResearchPage = () => {
         variant="contained"
         onClick={handleExportPDF}
         disabled={!canExport}
+        startIcon={<PictureAsPdfIcon />}
         sx={{ 
           backgroundColor: canExport ? 'primary.main' : 'grey.500',
           '&:hover': {
             backgroundColor: canExport ? 'primary.dark' : 'grey.600'
+          },
+          '&.Mui-disabled': {
+            backgroundColor: 'grey.300',
+            color: 'grey.500'
           }
         }}
-        startIcon={<PictureAsPdfIcon />}
       >
         PDF
       </Button>
@@ -303,66 +533,51 @@ const ResearchPage = () => {
         variant="contained"
         onClick={handleExportDOCX}
         disabled={!canExport}
+        startIcon={<ArticleIcon />}
         sx={{ 
           backgroundColor: canExport ? 'primary.main' : 'grey.500',
           '&:hover': {
             backgroundColor: canExport ? 'primary.dark' : 'grey.600'
+          },
+          '&.Mui-disabled': {
+            backgroundColor: 'grey.300',
+            color: 'grey.500'
           }
         }}
-        startIcon={<ArticleIcon />}
       >
         Word
       </Button>
     </Box>
   );
 
+  useEffect(() => {
+    // Initialize real-time subscription
+    const cleanup = initializeRealtimeSubscription((payload) => {
+      console.log('Research updated:', payload)
+      // Handle real-time updates
+      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+        const newData = payload.new
+        dispatch(addToHistory({
+          id: newData.id,
+          title: newData.title,
+          content: newData.content.sections,
+          references: newData.references,
+          timestamp: newData.created_at
+        }))
+      }
+    })
+
+    return () => {
+      cleanup()
+    }
+  }, [dispatch])
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Grid container spacing={3}>
         {/* Settings Panel */}
         <Grid item xs={12} md={3}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Research Settings
-            </Typography>
-            <FormControl fullWidth sx={{ mt: 2 }}>
-              <InputLabel>Research Mode</InputLabel>
-              <Select
-                value={research.mode}
-                label="Research Mode"
-                onChange={handleModeChange}
-              >
-                <MenuItem value={ResearchMode.Basic}>Basic</MenuItem>
-                <MenuItem value={ResearchMode.Advanced}>Advanced</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControl fullWidth sx={{ mt: 2 }}>
-              <InputLabel>Research Type</InputLabel>
-              <Select
-                value={research.type}
-                label="Research Type"
-                onChange={handleTypeChange}
-              >
-                <MenuItem value={ResearchType.Article}>Article</MenuItem>
-                <MenuItem value={ResearchType.General}>General Research</MenuItem>
-                <MenuItem value={ResearchType.Literature}>Literature Review</MenuItem>
-                <MenuItem value={ResearchType.Experiment}>Experiment Design</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControl fullWidth sx={{ mt: 2 }}>
-              <InputLabel>Citation Style</InputLabel>
-              <Select
-                value={research.citationStyle}
-                label="Citation Style"
-                onChange={handleCitationStyleChange}
-              >
-                <MenuItem value={CitationStyle.APA}>APA</MenuItem>
-                <MenuItem value={CitationStyle.MLA}>MLA</MenuItem>
-                <MenuItem value={CitationStyle.Chicago}>Chicago</MenuItem>
-                <MenuItem value={CitationStyle.Harvard}>Harvard</MenuItem>
-              </Select>
-            </FormControl>
-          </Paper>
+          {renderSettings()}
           {renderOutlineButton()}
         </Grid>
 
@@ -406,42 +621,7 @@ const ResearchPage = () => {
               </Box>
             </Box>
 
-            {research.loading && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
-                <CircularProgress size={20} />
-              </Box>
-            )}
-
-            {isLoading && (
-              <Box sx={{ width: '100%', mt: 2, mb: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <Typography variant="body2" sx={{ flexGrow: 1 }}>
-                    {statusMessage}
-                  </Typography>
-                  <Typography variant="body2" sx={{ ml: 2 }}>
-                    {Math.round(progress)}%
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Box sx={{ width: '100%', mr: 1 }}>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={progress} 
-                      sx={{ 
-                        height: 8,
-                        borderRadius: 4,
-                        '& .MuiLinearProgress-bar': {
-                          borderRadius: 4,
-                        }
-                      }}
-                    />
-                  </Box>
-                </Box>
-                <Typography variant="caption" sx={{ mt: 1, display: 'block', textAlign: 'center' }}>
-                  {`Processing section ${completedSteps + 1} of ${totalSteps}`}
-                </Typography>
-              </Box>
-            )}
+            {renderProgress()}
 
             {research.title && (
               <Box sx={{ mb: 4 }}>

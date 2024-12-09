@@ -1,8 +1,7 @@
 import { ResearchSection } from '../store/slices/researchSlice';
-import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
-import { jsPDF } from 'jspdf';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, SectionType, AlignmentType, PageNumber, TableOfContents, Header } from 'docx';
 import pdfMake from 'pdfmake/build/pdfmake';
-import htmlToPdfmake from 'html-to-pdfmake';
+import 'pdfmake/build/vfs_fonts';
 
 interface DocumentMetadata {
   title: string;
@@ -69,142 +68,189 @@ export const generatePDF = async (
   sections: ResearchSection[],
   references: string[]
 ): Promise<Blob> => {
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.width;
-  
-  // Title page
-  doc.setFontSize(24);
-  const titleLines = doc.splitTextToSize(metadata.title, pageWidth - 40);
-  const titleY = 60;
-  titleLines.forEach((line: string, index: number) => {
-    doc.text(line, pageWidth / 2, titleY + (index * 10), { align: 'center' });
-  });
-  
-  doc.setFontSize(12);
-  doc.text(`Author: ${metadata.author}`, pageWidth / 2, 120, { align: 'center' });
-  doc.text(`Date: ${metadata.date}`, pageWidth / 2, 135, { align: 'center' });
-  
-  doc.addPage(); // Page break after title
-
-  // Table of Contents
-  doc.setFontSize(16);
-  doc.setFont(undefined, 'bold');
-  doc.text('Table of Contents', 20, 20);
-  
-  let yPos = 40;
-  doc.setFontSize(11);
-  doc.setFont(undefined, 'normal');
-  sections.forEach((section, index) => {
-    const sectionNumber = index + 1;
-    doc.text(`${sectionNumber}. ${section.title}`, 20, yPos);
-    yPos += 10;
-
-    if (section.subsections?.length) {
-      section.subsections.forEach((subsection, subIndex) => {
-        const subsectionNumber = `${sectionNumber}.${subIndex + 1}`;
-        doc.text(`    ${subsectionNumber}. ${subsection.title}`, 20, yPos);
-        yPos += 10;
-      });
-    }
-  });
-
-  doc.addPage(); // Page break after TOC
-  doc.addPage(); // Extra page break for spacing
-
-  // Content
-  let currentY = 20;
-  sections.forEach((section, index) => {
-    const sectionNumber = index + 1;
+  try {
+    const content: any[] = [];
     
-    if (currentY > doc.internal.pageSize.height - 40) {
-      doc.addPage();
-      currentY = 20;
-    }
-
-    // Section header
-    doc.setFontSize(14);
-    doc.setFont(undefined, 'bold');
-    doc.text(`${sectionNumber}. ${section.title}`, 20, currentY);
-    currentY += 10;
-
-    // Section content
-    doc.setFontSize(11);
-    doc.setFont(undefined, 'normal');
-    const contentLines = doc.splitTextToSize(section.content, pageWidth - 40);
-    contentLines.forEach(line => {
-      if (currentY > doc.internal.pageSize.height - 20) {
-        doc.addPage();
-        currentY = 20;
+    // Title page
+    content.push(
+      {
+        text: metadata.title,
+        style: 'title',
+        alignment: 'center',
+      },
+      {
+        text: `\n\nAuthor: ${metadata.author}\nDate: ${metadata.date}`,
+        style: 'author',
+        alignment: 'center',
+      },
+      {
+        text: '',
+        pageBreak: 'after'
       }
-      doc.text(line, 20, currentY);
-      currentY += 7;
-    });
-    currentY += 14; // Add 2 line feeds after section content
+    );
 
-    if (section.subsections?.length) {
-      section.subsections.forEach((subsection, subIndex) => {
-        const subsectionNumber = `${sectionNumber}.${subIndex + 1}`;
-        
-        if (currentY > doc.internal.pageSize.height - 40) {
-          doc.addPage();
-          currentY = 20;
-        }
+    // Table of Contents
+    content.push(
+      {
+        text: 'Table of Contents',
+        style: 'tocHeader',
+        pageBreak: 'before'
+      }
+    );
 
-        // Subsection header
-        doc.setFontSize(12);
-        doc.setFont(undefined, 'bold');
-        doc.text(`${subsectionNumber}. ${subsection.title}`, 25, currentY);
-        currentY += 10;
+    // Add TOC entries
+    sections.forEach((section, index) => {
+      content.push({
+        text: `${index + 1}. ${section.title}`,
+        style: 'toc1',
+        tocItem: true
+      });
 
-        // Subsection content
-        doc.setFontSize(11);
-        doc.setFont(undefined, 'normal');
-        const subContentLines = doc.splitTextToSize(subsection.content, pageWidth - 45);
-        subContentLines.forEach(line => {
-          if (currentY > doc.internal.pageSize.height - 20) {
-            doc.addPage();
-            currentY = 20;
-          }
-          doc.text(line, 25, currentY);
-          currentY += 7;
+      if (section.subsections?.length) {
+        section.subsections.forEach((subsection, subIndex) => {
+          content.push({
+            text: `    ${index + 1}.${subIndex + 1}. ${subsection.title}`,
+            style: 'toc2',
+            tocItem: true
+          });
         });
-        currentY += 14; // Add 2 line feeds after subsection content
+      }
+    });
+
+    content.push({ text: '', pageBreak: 'after' });
+
+    // Content sections
+    sections.forEach((section, index) => {
+      content.push({
+        text: `${index + 1}. ${section.title}`,
+        style: 'heading1',
+        tocItem: true
+      });
+      content.push({
+        text: section.content,
+        style: 'content',
+      });
+
+      if (section.subsections?.length) {
+        section.subsections.forEach((subsection, subIndex) => {
+          content.push({
+            text: `${index + 1}.${subIndex + 1}. ${subsection.title}`,
+            style: 'heading2',
+            tocItem: true
+          });
+          content.push({
+            text: subsection.content,
+            style: 'content',
+          });
+        });
+      }
+    });
+
+    // References
+    if (references.length > 0) {
+      content.push({
+        text: 'References',
+        style: 'heading1',
+        tocItem: true,
+        pageBreak: 'before'
+      });
+      references.forEach(ref => {
+        content.push({
+          text: ref,
+          style: 'reference'
+        });
       });
     }
-  });
 
-  // References section
-  if (references && references.length > 0) {
-    doc.addPage();
-    doc.setFontSize(14);
-    doc.setFont(undefined, 'bold');
-    doc.text('References', 20, 20);
-    
-    // Add extra space before first citation
-    currentY = 50; // Increased from 40 to 50 for more space
-    
-    doc.setFontSize(11);
-    doc.setFont(undefined, 'normal');
-    
-    references.forEach((ref, index) => {
-      // Check if we need a new page
-      if (currentY > doc.internal.pageSize.height - 40) {
-        doc.addPage();
-        currentY = 20;
+    const docDefinition = {
+      content: content,
+      styles: {
+        title: {
+          fontSize: 24,
+          bold: true,
+          margin: [0, 250, 0, 0]
+        },
+        author: {
+          fontSize: 12,
+          margin: [0, 50, 0, 0]
+        },
+        tocHeader: {
+          fontSize: 20,
+          bold: true,
+          margin: [0, 0, 0, 20]
+        },
+        toc1: {
+          fontSize: 12,
+          margin: [0, 3, 0, 3]
+        },
+        toc2: {
+          fontSize: 11,
+          margin: [0, 3, 0, 3],
+          color: 'grey'
+        },
+        heading1: {
+          fontSize: 16,
+          bold: true,
+          margin: [0, 20, 0, 10]
+        },
+        heading2: {
+          fontSize: 14,
+          bold: true,
+          margin: [0, 15, 0, 10]
+        },
+        content: {
+          fontSize: 12,
+          margin: [0, 0, 0, 15],
+          lineHeight: 1.3
+        },
+        reference: {
+          fontSize: 11,
+          margin: [0, 0, 0, 10],
+          lineHeight: 1.2
+        }
+      },
+      pageSize: 'A4',
+      pageMargins: [72, 72, 72, 72],
+      footer: function(currentPage: number) {
+        return currentPage === 1 ? null : {
+          text: currentPage.toString(),
+          alignment: 'center',
+          margin: [0, 20]
+        };
+      },
+      header: function(currentPage: number) {
+        return currentPage <= 2 ? null : {
+          text: metadata.title,
+          alignment: 'right',
+          margin: [72, 20, 72, 20],
+          fontSize: 10,
+          color: 'grey'
+        };
       }
-      
-      const refLines = doc.splitTextToSize(ref, pageWidth - 40);
-      refLines.forEach((line: string) => {
-        doc.text(line, 20, currentY);
-        currentY += 7;
-      });
-      
-      // Add two line feeds after each citation (increased space)
-      currentY += 20; // Increased from 14 to 20 for more visible spacing
-    });
-  }
+    };
 
-  return doc.output('blob');
+    return new Promise((resolve, reject) => {
+      try {
+        const pdfDoc = pdfMake.createPdf(docDefinition);
+        pdfDoc.getBlob((blob: Blob) => {
+          if (!blob) {
+            reject(new Error('Failed to generate PDF blob'));
+            return;
+          }
+          resolve(blob);
+        }, (error: any) => {
+          console.error('Error in PDF generation:', error);
+          reject(error);
+        });
+      } catch (error) {
+        console.error('Error creating PDF:', error);
+        reject(error);
+      }
+    });
+  } catch (error) {
+    console.error('Error generating PDF:', error);
+    throw error;
+  }
 };
 
 export const generateDOCX = async (
@@ -212,166 +258,214 @@ export const generateDOCX = async (
   sections: ResearchSection[],
   references: string[]
 ): Promise<Blob> => {
-  const children = [
-    // Title Page
-    new Paragraph({
-      text: metadata.title,
-      heading: HeadingLevel.TITLE,
-      spacing: {
-        before: 3000,
-        after: 3000
+  try {
+    // Title page section
+    const titleSection = {
+      properties: {
+        type: SectionType.NEXT_PAGE
       },
-      alignment: 'center'
-    }),
-    new Paragraph({
-      text: `Author: ${metadata.author}`,
-      spacing: { after: 300 },
-      alignment: 'center'
-    }),
-    new Paragraph({
-      text: `Date: ${metadata.date}`,
-      spacing: { after: 500 },
-      alignment: 'center'
-    }),
-    new Paragraph({
-      text: '',
-      pageBreakBefore: true
-    }),
-
-    // Table of Contents
-    new Paragraph({
-      text: 'Table of Contents',
-      heading: HeadingLevel.HEADING_1,
-      spacing: { after: 300 }
-    }),
-  ];
-
-  // Add TOC entries
-  sections.forEach((section, index) => {
-    const sectionNumber = index + 1;
-    children.push(
-      new Paragraph({
-        text: `${sectionNumber}. ${section.title}`,
-        spacing: { after: 200 }
-      })
-    );
-
-    if (section.subsections?.length) {
-      section.subsections.forEach((subsection, subIndex) => {
-        const subsectionNumber = `${sectionNumber}.${subIndex + 1}`;
-        children.push(
-          new Paragraph({
-            text: `    ${subsectionNumber}. ${subsection.title}`,
-            spacing: { after: 200 }
-          })
-        );
-      });
-    }
-  });
-
-  // Page break after TOC
-  children.push(
-    new Paragraph({
-      text: '',
-      pageBreakBefore: true
-    })
-  );
-
-  // Content sections
-  sections.forEach((section, index) => {
-    const sectionNumber = index + 1;
-    children.push(
-      new Paragraph({
-        text: `${sectionNumber}. ${section.title}`,
-        heading: HeadingLevel.HEADING_1,
-        bold: true,
-        spacing: { before: 400, after: 200 }
-      }),
-      new Paragraph({
-        text: section.content,
-        size: 22, // Smaller font size for content
-        spacing: { after: 300 }
-      })
-    );
-
-    if (section.subsections?.length) {
-      section.subsections.forEach((subsection, subIndex) => {
-        const subsectionNumber = `${sectionNumber}.${subIndex + 1}`;
-        children.push(
-          new Paragraph({
-            text: `${subsectionNumber}. ${subsection.title}`,
-            heading: HeadingLevel.HEADING_2,
-            bold: true,
-            spacing: { before: 300, after: 200 }
-          }),
-          new Paragraph({
-            text: subsection.content,
-            size: 22, // Smaller font size for content
-            spacing: { after: 300 }
-          })
-        );
-      });
-    }
-  });
-
-  // References section
-  if (references && references.length > 0) {
-    // Add page break before references
-    children.push(
-      new Paragraph({
-        text: '',
-        pageBreakBefore: true
-      }),
-      new Paragraph({
-        text: 'References',
-        heading: HeadingLevel.HEADING_1,
-        bold: true,
-        spacing: { before: 400, after: 400 } // Increased after spacing
-      })
-    );
-
-    // Add extra paragraph for spacing before first citation
-    children.push(
-      new Paragraph({
-        text: '',
-        spacing: { before: 400, after: 400 }
-      })
-    );
-
-    // Add each reference with extra spacing
-    references.forEach((ref, index) => {
-      children.push(
+      children: [
         new Paragraph({
-          text: ref,
-          size: 22, // Smaller font size for citations
-          spacing: { before: 200, after: 400 } // Increased after spacing
+          text: metadata.title,
+          heading: HeadingLevel.TITLE,
+          spacing: { before: 3000, after: 400 },
+          alignment: AlignmentType.CENTER
         }),
-        // Add extra paragraph for spacing between citations
         new Paragraph({
-          text: '',
+          children: [
+            new TextRun({
+              text: `Author: ${metadata.author}`,
+              size: 24
+            })
+          ],
+          spacing: { before: 400 },
+          alignment: AlignmentType.CENTER
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `Date: ${metadata.date}`,
+              size: 24
+            })
+          ],
+          spacing: { before: 200 },
+          alignment: AlignmentType.CENTER
+        })
+      ]
+    };
+
+    // Create header with page number and auto-updating fields
+    const header = new Header({
+      children: [
+        new Paragraph({
+          alignment: AlignmentType.RIGHT,
+          children: [
+            new TextRun({
+              children: ['Page ', PageNumber.CURRENT],
+            }),
+          ],
+        }),
+      ],
+    });
+
+    // Table of Contents section
+    const tocSection = {
+      properties: {
+        type: SectionType.NEXT_PAGE
+      },
+      children: [
+        new Paragraph({
+          text: "Table of Contents",
+          heading: HeadingLevel.HEADING_1,
+          spacing: { before: 400, after: 400 },
+          alignment: AlignmentType.CENTER
+        }),
+        new TableOfContents("Table of Contents", {
+          hyperlink: true,
+          headingStyleRange: "1-5",
+          stylesWithLevels: [
+            { level: 1, styleId: "Heading1" },
+            { level: 2, styleId: "Heading2" },
+            { level: 3, styleId: "Heading3" },
+          ],
+          updateFields: true
+        })
+      ]
+    };
+
+    // Content sections with proper heading styles
+    const contentSections = sections.map((section, index) => {
+      const sectionChildren = [
+        new Paragraph({
+          text: `${index + 1}. ${section.title}`,
+          heading: HeadingLevel.HEADING_1,
+          spacing: { before: 400, after: 200 }
+        }),
+        new Paragraph({
+          text: section.content,
           spacing: { before: 200, after: 200 }
         })
-      );
+      ];
+
+      if (section.subsections?.length) {
+        section.subsections.forEach((subsection, subIndex) => {
+          sectionChildren.push(
+            new Paragraph({
+              text: `${index + 1}.${subIndex + 1}. ${subsection.title}`,
+              heading: HeadingLevel.HEADING_2,
+              spacing: { before: 300, after: 200 }
+            }),
+            new Paragraph({
+              text: subsection.content,
+              spacing: { before: 200, after: 200 }
+            })
+          );
+        });
+      }
+
+      return {
+        properties: {
+          type: SectionType.CONTINUOUS
+        },
+        children: sectionChildren
+      };
     });
+
+    // References section
+    const referencesSection = {
+      properties: {
+        type: SectionType.NEXT_PAGE
+      },
+      children: [
+        new Paragraph({
+          text: "References",
+          heading: HeadingLevel.HEADING_1,
+          spacing: { before: 400, after: 400 }
+        }),
+        ...references.map(ref => new Paragraph({
+          text: ref,
+          spacing: { before: 200, after: 200 }
+        }))
+      ]
+    };
+
+    const doc = new Document({
+      features: {
+        updateFields: true
+      },
+      sections: [
+        titleSection,
+        tocSection,
+        ...contentSections,
+        referencesSection
+      ],
+      styles: {
+        paragraphStyles: [
+          {
+            id: "Heading1",
+            name: "Heading 1",
+            basedOn: "Normal",
+            next: "Normal",
+            quickFormat: true,
+            run: {
+              size: 28,
+              bold: true
+            },
+            paragraph: {
+              spacing: { before: 240, after: 120 }
+            }
+          },
+          {
+            id: "Heading2",
+            name: "Heading 2",
+            basedOn: "Normal",
+            next: "Normal",
+            quickFormat: true,
+            run: {
+              size: 26,
+              bold: true
+            },
+            paragraph: {
+              spacing: { before: 240, after: 120 }
+            }
+          },
+          {
+            id: "Heading3",
+            name: "Heading 3",
+            basedOn: "Normal",
+            next: "Normal",
+            quickFormat: true,
+            run: {
+              size: 24,
+              bold: true
+            },
+            paragraph: {
+              spacing: { before: 240, after: 120 }
+            }
+          }
+        ]
+      }
+    });
+
+    return Packer.toBlob(doc);
+  } catch (error) {
+    console.error('Error generating DOCX:', error);
+    throw error;
   }
-
-  const doc = new Document({
-    sections: [{
-      properties: {},
-      children: children
-    }]
-  });
-
-  return Packer.toBlob(doc);
 };
 
 export const downloadDocument = (blob: Blob, filename: string) => {
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  window.URL.revokeObjectURL(url);
-  document.body.removeChild(a);
+  try {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (error) {
+    console.error('Error downloading document:', error);
+    throw error;
+  }
 };

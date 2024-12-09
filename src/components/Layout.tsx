@@ -1,20 +1,23 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Box, AppBar, Toolbar, Typography, Container, Button, IconButton } from '@mui/material'
 import { Menu as MenuIcon, ExitToApp as ExitToAppIcon } from '@mui/icons-material'
-import { useSelector, useDispatch } from 'react-redux'
+import { useSelector } from 'react-redux'
 import { RootState } from '../store'
-import { logout } from '../store/slices/authSlice'
+import { signOut } from '../services/authService'
 
 const Layout = () => {
   const location = useLocation()
   const navigate = useNavigate()
-  const dispatch = useDispatch()
   const isAuthenticated = useSelector((state: RootState) => state.auth.isAuthenticated)
   const user = useSelector((state: RootState) => state.auth.user)
 
-  const handleLogout = () => {
-    dispatch(logout())
-    navigate('/')
+  const handleLogout = async () => {
+    try {
+      await signOut()
+      navigate('/')
+    } catch (error) {
+      console.error('Error logging out:', error)
+    }
   }
 
   return (
