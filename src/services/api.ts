@@ -3,18 +3,21 @@ import axios from 'axios'
 import { ResearchException, ResearchError } from './researchErrors'
 
 // API Configuration
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseKey = import.meta.env.VITE_SUPABASE_KEY
+const supabaseUrl = process.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL
+const supabaseKey = process.env.VITE_SUPABASE_KEY || import.meta.env.VITE_SUPABASE_KEY
 
 // Debug environment variables
 console.log('Environment Variables Check:')
 console.log('VITE_SUPABASE_URL exists:', !!supabaseUrl)
 console.log('VITE_SUPABASE_KEY exists:', !!supabaseKey)
 console.log('VITE_SUPABASE_URL value:', supabaseUrl)
-console.log('VITE_SUPABASE_KEY value:', supabaseKey?.substring(0, 5) + '...')
+console.log('VITE_SUPABASE_KEY value:', supabaseKey ? `${supabaseKey.substring(0, 5)}...` : 'undefined')
+console.log('process.env:', process.env)
+console.log('import.meta.env:', import.meta.env)
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase environment variables. Please check your Netlify environment settings.')
+  console.error('Make sure VITE_SUPABASE_URL and VITE_SUPABASE_KEY are set in Netlify environment variables.')
   throw new ResearchException(
     ResearchError.CONFIGURATION_ERROR,
     'Application configuration error. Please contact support.'
@@ -32,7 +35,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
 })
 
 // GROQ Configuration
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY
+const GROQ_API_KEY = process.env.VITE_GROQ_API_KEY || import.meta.env.VITE_GROQ_API_KEY
 if (!GROQ_API_KEY) {
   throw new Error('Missing GROQ API key. Please check your .env file.')
 }
