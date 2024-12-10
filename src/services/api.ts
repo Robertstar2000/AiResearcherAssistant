@@ -182,12 +182,14 @@ export const generateTitle = async (query: string): Promise<string> => {
 export const generateSection = async (
   topic: string,
   sectionTitle: string,
-  isSubsection = false
+  isSubsection = false,
+  retryCount = 0
 ): Promise<ResearchSection> => {
   try {
     const minWords = isSubsection ? 2000 : 3000;
-    const systemPrompt = `You are a research content generator. Generate detailed, academic content in post graduate level language for the given section. Minimum length: ${minWords} words.`;
-    const prompt = `Generate content for the section "${sectionTitle}" in research about "${topic}".`;
+    const maxRetries = 3;
+    const systemPrompt = `You are a research content generator. Generate detailed, academic content in post graduate level language for the given section. The content must be at least ${minWords} words long. If you cannot generate the full content in one response, focus on providing a complete and coherent portion that can be expanded later.`;
+    const prompt = `Generate comprehensive academic content for the section "${sectionTitle}" in research about "${topic}". The content should be at least ${minWords} words long and maintain high academic standards.`;
 
     const response = await makeApiCall(
       () => makeGroqApiCall(prompt, GROQ_CONFIG.MAX_TOKENS, systemPrompt),
@@ -197,13 +199,25 @@ export const generateSection = async (
     const content = response.choices[0].message.content.trim();
     const wordCount = content.split(/\s+/).length;
 
+    // If content is too short and we haven't exceeded max retries, try again
+    if (wordCount < minWords && retryCount < maxRetries) {
+      console.log(`Generated content too short (${wordCount}/${minWords} words). Retrying... (${retryCount + 1}/${maxRetries})`);
+      return generateSection(topic, sectionTitle, isSubsection, retryCount + 1);
+    }
+
     return {
       title: sectionTitle,
       content,
       number: '1', // This will be set by the parent function
-      ...(wordCount < minWords && { warning: `Generated content (${wordCount} words) is shorter than requested (${minWords} words).` })
+      ...(wordCount < minWords && { 
+        warning: `Generated content (${wordCount} words) is shorter than requested (${minWords} words). This may be due to API token limits.`
+      })
     };
   } catch (error) {
+    if (retryCount < maxRetries) {
+      console.log(`Error generating section. Retrying... (${retryCount + 1}/${maxRetries})`);
+      return generateSection(topic, sectionTitle, isSubsection, retryCount + 1);
+    }
     throw new ResearchException(
       ResearchError.API_ERROR,
       error instanceof Error ? error.message : 'Unknown error'

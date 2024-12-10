@@ -52,6 +52,7 @@ export async function generateResearch(
     // Generate content for each section
     let currentProgress = 20;
     const progressPerSection = 60 / outlineItems.length;
+    const maxConsecutiveErrors = 5; // Increased from 3 to give more chances
 
     for (let i = 0; i < outlineItems.length; i++) {
       const item = outlineItems[i];
@@ -63,6 +64,11 @@ export async function generateResearch(
         );
 
         const section = await generateSection(topic, item.title, item.isSubsection);
+        
+        if (section.warning) {
+          console.warn(`Warning for section ${item.title}: ${section.warning}`);
+        }
+        
         section.number = item.number;
         
         // Add section to appropriate place in hierarchy
@@ -80,14 +86,16 @@ export async function generateResearch(
         consecutiveErrors = 0;
         currentProgress += progressPerSection;
       } catch (error) {
+        console.error(`Error generating section ${item.title}:`, error);
         consecutiveErrors++;
-        if (consecutiveErrors >= 3) {
+        if (consecutiveErrors >= maxConsecutiveErrors) {
           throw new ResearchException(
             ResearchError.GENERATION_ERROR,
-            'Multiple consecutive section generation failures'
+            `Multiple consecutive section generation failures after ${maxConsecutiveErrors} attempts. Last error: ${error instanceof Error ? error.message : 'Unknown error'}`
           );
         }
-        console.error(`Error generating section ${item.title}:`, error);
+        // Continue to next section after logging the error
+        continue;
       }
     }
 
