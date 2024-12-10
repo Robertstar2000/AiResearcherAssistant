@@ -162,7 +162,7 @@ const makeApiCall = async <T>(
 // Generate research content
 export const generateTitle = async (query: string): Promise<string> => {
   const systemPrompt = 'You are a research title generator. Generate a clear, concise, and academic title for the given research topic.';
-  const prompt = `Generate a research title for the following topic: ${query}`;
+  const prompt = `Generate a one sentence research title for the following topic: ${query}`;
 
   try {
     const response = await makeApiCall(
@@ -185,8 +185,8 @@ export const generateSection = async (
   isSubsection = false
 ): Promise<ResearchSection> => {
   try {
-    const minWords = isSubsection ? 700 : 1200;
-    const systemPrompt = `You are a research content generator. Generate detailed, academic content for the given section. Minimum length: ${minWords} words.`;
+    const minWords = isSubsection ? 2000 : 3000;
+    const systemPrompt = `You are a research content generator. Generate detailed, academic content in post graduate level language for the given section. Minimum length: ${minWords} words.`;
     const prompt = `Generate content for the section "${sectionTitle}" in research about "${topic}".`;
 
     const response = await makeApiCall(
