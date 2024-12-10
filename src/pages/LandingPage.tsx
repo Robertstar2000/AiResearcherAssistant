@@ -170,26 +170,6 @@ const LandingPage = () => {
         >
           Sign Up For Free
         </Button>
-        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mb: 3 }}>
-          <Button
-            variant="contained"
-            color="secondary"
-            size="large"
-            onClick={() => navigate('/research')}
-            sx={{ px: 4 }}
-          >
-            Start Research
-          </Button>
-          <Button
-            variant="outlined"
-            color="inherit"
-            size="large"
-            onClick={() => navigate('/auth')}
-            sx={{ px: 4 }}
-          >
-            Sign Up
-          </Button>
-        </Box>
       </Box>
 
       {/* Features Grid */}

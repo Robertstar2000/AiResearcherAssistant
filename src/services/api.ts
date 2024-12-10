@@ -410,22 +410,85 @@ Please format the outline with:
   }
 };
 
-export const generateDetailedOutline = async (topic: string): Promise<string> => {
+export const generateDetailedOutline = async (topic: string, mode: string = 'article'): Promise<string> => {
   try {
-    const systemPrompt = 'You are a research outline generator. Generate a detailed outline with main sections (1., 2., etc.) and subsections (a., b., etc.).';
-    const prompt = `Generate a detailed outline for research about: ${topic}
-
-Please format the outline with:
-1. Main sections numbered (1., 2., etc.)
-2. Subsections lettered (a., b., etc.)
-3. Include brief descriptions of what each section will cover
-4. Ensure logical flow and progression of ideas
-5. Include standard research paper sections (Introduction, Methodology, Results, Discussion, Conclusion)`;
+    const systemPrompt = 'You are a research outline generator. Generate a detailed outline following the specified mode and requirements.';
+    
+    let prompt = `Generate a detailed outline for research about: ${topic}\n\n`;
+    
+    switch(mode.toLowerCase()) {
+      case 'article':
+        prompt += `Create a popular science level article with:
+1. 3-6 main sections
+2. Each section must be unique and engaging
+3. Must be written at a popular science level
+4. Must maintain academic rigor while being accessible
+5. Format with main sections (1., 2., etc.)`;
+        break;
+        
+      case 'basic-literature':
+        prompt += `Create a basic literature review with:
+1. 9-15 main sections
+2. Must start with abstract and end with conclusion
+3. Focus on synthesis and research gaps
+4. Format with main sections (1., 2., etc.)
+5. Each section must be unique and based on the topic`;
+        break;
+        
+      case 'basic-general':
+        prompt += `Create a basic general research outline with:
+1. 9-15 main sections
+2. Must start with abstract and end with conclusion
+3. Flexible structure for topic exploration
+4. Format with main sections (1., 2., etc.)
+5. Each section must be unique and focused on the topic`;
+        break;
+        
+      case 'basic-experimental':
+        prompt += `Create a basic experimental design outline with:
+1. 9-15 main sections
+2. Must start with abstract and end with conclusion
+3. Focus on experimental methodology
+4. Format with main sections (1., 2., etc.)
+5. Each section must be unique and methodologically sound`;
+        break;
+        
+      case 'advanced-literature':
+        prompt += `Create an advanced literature review with:
+1. 12-24 main sections
+2. 3-6 subsections per main section
+3. Must start with abstract and end with conclusion
+4. Deep analysis of research synthesis and gaps
+5. Format with main sections (1., 2., etc.) and subsections (a., b., etc.)
+6. Each section and subsection must be unique and comprehensive`;
+        break;
+        
+      case 'advanced-general':
+        prompt += `Create an advanced general research outline with:
+1. 12-24 main sections
+2. 3-6 subsections per main section
+3. Must start with abstract and end with conclusion
+4. In-depth exploration of all topic aspects
+5. Format with main sections (1., 2., etc.) and subsections (a., b., etc.)
+6. Each section and subsection must be unique and detailed`;
+        break;
+        
+      case 'advanced-experimental':
+        prompt += `Create an advanced experimental design outline with:
+1. 12-24 main sections
+2. 3-6 subsections per main section
+3. Must start with abstract and end with conclusion
+4. Start with a clear hypothesis about: ${topic}
+5. Design a comprehensive experiment to prove the hypothesis
+6. Format with main sections (1., 2., etc.) and subsections (a., b., etc.)
+7. Each section and subsection must be unique and methodologically rigorous`;
+        break;
+    }
 
     const response = await makeApiCall(
       () => makeGroqApiCall(prompt, GROQ_CONFIG.MAX_TOKENS, systemPrompt),
       'Failed to generate detailed outline',
-      3  // Fixed number of retries
+      3
     );
 
     const outline = response.choices[0].message.content.trim();

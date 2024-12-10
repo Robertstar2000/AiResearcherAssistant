@@ -39,14 +39,14 @@ export async function generateResearch(
 
   try {
     // Generate detailed outline
-    progressCallback(10, 100, 'Generating research outline...');
+    progressCallback(10, 100, 'Generating detailed research outline...');
     outline = await generateDetailedOutline(`Generate a detailed outline for research on: ${topic}`);
     if (!outline) {
       throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate outline');
     }
 
     // Parse outline into sections
-    progressCallback(20, 100, 'Parsing outline structure...');
+    progressCallback(20, 100, 'Analyzing and structuring research outline...');
     const outlineItems = parseDetailedOutline(outline);
     if (!outlineItems.length) {
       throw new ResearchException(ResearchError.PARSING_ERROR, 'Failed to parse outline');
@@ -63,20 +63,21 @@ export async function generateResearch(
       
       try {
         console.log(`Attempting to generate section ${i + 1}: ${item.title}`);
+        const sectionType = item.isSubsection ? 'subsection' : 'section';
         progressCallback(
           currentProgress,
           100,
-          `Generating section ${i + 1} of ${outlineItems.length}: ${item.title}`
+          `[${i + 1}/${outlineItems.length}] Generating ${sectionType}: "${item.title}"`
         );
 
         // Add base delay between sections to avoid rate limits
         if (i > 0) {
-          const currentDelay = baseDelay * Math.pow(1.5, rateLimitHits); // Reduced exponential factor
+          const currentDelay = baseDelay * Math.pow(1.5, rateLimitHits);
           console.log(`Applying delay of ${currentDelay/1000} seconds before next section`);
           progressCallback(
             currentProgress,
             100,
-            `Processing reasearch for ${currentDelay/1000} seconds before generating next section...`
+            `[${i + 1}/${outlineItems.length}] Processing ${currentDelay/1000}s before generating "${item.title}"...`
           );
           await new Promise(resolve => setTimeout(resolve, currentDelay));
         }
@@ -86,6 +87,11 @@ export async function generateResearch(
         
         if (section.warning) {
           console.warn(`Warning for section ${item.title}:`, section.warning);
+          progressCallback(
+            currentProgress,
+            100,
+            `[${i + 1}/${outlineItems.length}] Note: ${section.warning} for "${item.title}"`
+          );
         }
 
         if (!section || !section.content) {
@@ -124,7 +130,7 @@ export async function generateResearch(
             progressCallback(
               currentProgress,
               100,
-              `Rate limit hit ${rateLimitHits}/${maxRateLimitRetries}, waiting ${retryDelay/1000} seconds before retry...`
+              `[${i + 1}/${outlineItems.length}] Rate limit hit ${rateLimitHits}/${maxRateLimitRetries}, waiting ${retryDelay/1000} seconds before retry...`
             );
             await new Promise(resolve => setTimeout(resolve, retryDelay));
             i--; // Retry this section
