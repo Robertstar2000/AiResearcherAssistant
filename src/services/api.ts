@@ -3,12 +3,42 @@ import axios from 'axios';
 import { ResearchException, ResearchError } from './researchErrors';
 
 // API Configuration
+const supabaseUrl = process.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.VITE_SUPABASE_KEY || import.meta.env.VITE_SUPABASE_KEY;
+const GROQ_API_KEY = process.env.VITE_GROQ_API_KEY || import.meta.env.VITE_GROQ_API_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('Missing Supabase environment variables');
+  throw new ResearchException(
+    ResearchError.CONFIGURATION_ERROR,
+    'Application configuration error. Please check your environment variables.'
+  );
+}
+
+// Initialize Supabase client
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true
+  }
+});
+
+// GROQ Configuration
+if (!GROQ_API_KEY) {
+  throw new ResearchException(
+    ResearchError.CONFIGURATION_ERROR,
+    'Missing GROQ API key. Please check your environment variables.'
+  );
+}
+
 const GROQ_CONFIG = {
   API_URL: 'https://api.groq.com/v1/completions',
-  API_KEY: process.env.GROQ_API_KEY || '',
+  API_KEY: GROQ_API_KEY,
   MODEL: 'mixtral-8x7b-32768',
   TEMPERATURE: 0.7,
   MAX_TOKENS: 32000,
+  MAX_RETRIES: 3
 };
 
 // API Types
@@ -41,7 +71,7 @@ export interface ResearchSection {
 
 // Helper Functions
 const waitBetweenCalls = async (retryCount = 0): Promise<void> => {
-  const baseDelay = 1000;
+  const baseDelay = 2000;
   const delay = baseDelay * Math.pow(2, retryCount);
   await new Promise(resolve => setTimeout(resolve, delay));
 };
@@ -82,6 +112,13 @@ const makeGroqApiCall = async (
     });
     return response.data;
   } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 429) {
+      throw new ResearchException(
+        ResearchError.RATE_LIMIT_ERROR,
+        'API rate limit exceeded',
+        { originalError: error }
+      );
+    }
     throw new ResearchException(
       ResearchError.API_ERROR,
       'API call failed',
@@ -91,7 +128,18 @@ const makeGroqApiCall = async (
 };
 
 const handleApiError = (error: unknown, message: string) => {
+  if (error instanceof ResearchException) {
+    throw error; // Re-throw ResearchException as is
+  }
   if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    if (status === 429) {
+      throw new ResearchException(
+        ResearchError.RATE_LIMIT_ERROR,
+        'API rate limit exceeded. Please wait before trying again.',
+        { originalError: error }
+      );
+    }
     throw new ResearchException(
       ResearchError.API_ERROR,
       `${message}: ${error.message}`,
@@ -107,11 +155,21 @@ const makeApiCall = async <T>(
   retryCount = 0
 ): Promise<T> => {
   try {
+    if (retryCount > 0) {
+      await waitBetweenCalls(retryCount - 1);
+    }
     const result = await callFn();
     return result;
   } catch (error) {
-    if (retryCount < 3) {
-      await waitBetweenCalls(retryCount);
+    if (error instanceof ResearchException && error.code === ResearchError.RATE_LIMIT_ERROR) {
+      if (retryCount < GROQ_CONFIG.MAX_RETRIES) {
+        console.log(`Rate limit hit, waiting before retry ${retryCount + 1}/${GROQ_CONFIG.MAX_RETRIES}`);
+        await waitBetweenCalls(retryCount);
+        return makeApiCall(callFn, errorMsg, retryCount + 1);
+      }
+    }
+    if (retryCount < GROQ_CONFIG.MAX_RETRIES) {
+      console.log(`Error, retrying ${retryCount + 1}/${GROQ_CONFIG.MAX_RETRIES}`);
       return makeApiCall(callFn, errorMsg, retryCount + 1);
     }
     handleApiError(error, errorMsg);
@@ -119,7 +177,6 @@ const makeApiCall = async <T>(
   }
 };
 
-// Generate research content
 export const generateTitle = async (query: string): Promise<string> => {
   const systemPrompt = 'You are a research title generator. Generate a clear, concise, and academic title for the given research topic.';
   const prompt = `Generate a one sentence research title for the following topic: ${query}`;
@@ -147,81 +204,101 @@ export const generateSection = async (
 ): Promise<ResearchSection> => {
   try {
     const minWords = isSubsection ? 2000 : 3000;
-    const maxRetries = 3;
     const systemPrompt = `You are a research content generator. Generate detailed, academic content in post graduate level language for the given section. The content must be at least ${minWords} words long. If you cannot generate the full content in one response, focus on providing a complete and coherent portion that can be expanded later.`;
     const prompt = `Generate comprehensive academic content for the section "${sectionTitle}" in research about "${topic}". The content should be at least ${minWords} words long and maintain high academic standards.`;
 
+    // Add delay between section generations to avoid rate limits
+    if (retryCount === 0) {
+      await waitBetweenCalls(0);
+    }
+
     const response = await makeApiCall(
       () => makeGroqApiCall(prompt, GROQ_CONFIG.MAX_TOKENS, systemPrompt),
-      'Failed to generate section',
-      3
+      `Failed to generate section "${sectionTitle}"`,
+      retryCount
     );
 
     const content = response.choices[0].message.content.trim();
     const wordCount = content.split(/\s+/).length;
 
     // If content is too short and we haven't exceeded max retries, try again
-    if (wordCount < minWords && retryCount < 3) {
-      console.log(`Generated content too short (${wordCount}/${minWords} words). Retrying... (${retryCount + 1}/3)`);
+    if (wordCount < minWords && retryCount < GROQ_CONFIG.MAX_RETRIES) {
+      console.log(`Generated content too short (${wordCount}/${minWords} words) for "${sectionTitle}". Retrying... (${retryCount + 1}/${GROQ_CONFIG.MAX_RETRIES})`);
       return generateSection(topic, sectionTitle, isSubsection, retryCount + 1);
     }
 
     return {
       title: sectionTitle,
       content,
-      number: '1', // This will be set by the parent function
-      ...(wordCount < minWords && { 
-        warning: `Generated content (${wordCount} words) is shorter than requested (${minWords} words). This may be due to API token limits.`
-      })
+      number: '1', // Will be updated by the calling function
+      warning: wordCount < minWords ? `Content length (${wordCount} words) is below the minimum requirement of ${minWords} words.` : undefined
     };
   } catch (error) {
-    if (retryCount < 3) {
-      console.log(`Error generating section. Retrying... (${retryCount + 1}/3)`);
-      return generateSection(topic, sectionTitle, isSubsection, retryCount + 1);
-    }
+    console.error(`Failed to generate section "${sectionTitle}":`, error);
     throw new ResearchException(
-      ResearchError.API_ERROR,
-      error instanceof Error ? error.message : 'Unknown error',
-      { originalError: error }
+      error instanceof ResearchException ? error.code : ResearchError.API_ERROR,
+      `Failed to generate section "${sectionTitle}": ${error instanceof Error ? error.message : 'Unknown error'}`,
+      { originalError: error, sectionTitle, topic, isSubsection }
     );
   }
 };
 
-export const generateSectionBatch = async (
-  title: string,
+export async function generateSectionBatch(
   sections: Array<{ sectionTitle: string; prompt: string }>
-): Promise<string[]> => {
-  const results: string[] = [];
-  for (const section of sections) {
-    try {
-      const response = await makeApiCall(
-        () => makeGroqApiCall(section.prompt, GROQ_CONFIG.MAX_TOKENS),
-        'Failed to generate section batch',
-        3
-      );
-      results.push(response.choices[0].message.content.trim());
-    } catch (error) {
-      console.error(`Error generating batch section: ${section.sectionTitle}`, error);
+): Promise<string[]> {
+  try {
+    if (!sections || sections.length === 0) {
       throw new ResearchException(
-        ResearchError.API_ERROR,
-        `Failed to generate section: ${section.sectionTitle}. ${error instanceof Error ? error.message : 'Unknown error'}`,
-        { originalError: error }
+        ResearchError.VALIDATION_FAILED,
+        'No sections provided for batch generation'
       );
     }
+
+    const results: string[] = [];
+    
+    for (const section of sections) {
+      try {
+        const response = await makeApiCall(
+          () => makeGroqApiCall(section.prompt, GROQ_CONFIG.MAX_TOKENS),
+          `Failed to generate section "${section.sectionTitle}"`,
+          GROQ_CONFIG.MAX_RETRIES
+        );
+        
+        const content = response.choices[0].message.content.trim();
+        if (!content) {
+          throw new Error('Empty content received from API');
+        }
+        
+        results.push(content);
+      } catch (error) {
+        console.error(`Error generating batch section "${section.sectionTitle}":`, error);
+        throw new ResearchException(
+          ResearchError.API_ERROR,
+          `Failed to generate section "${section.sectionTitle}": ${error instanceof Error ? error.message : 'Unknown error'}`,
+          { originalError: error, section }
+        );
+      }
+    }
+
+    return results;
+  } catch (error) {
+    throw new ResearchException(
+      error instanceof ResearchException ? error.code : ResearchError.API_ERROR,
+      error instanceof Error ? error.message : 'Failed to generate section batch',
+      { error, sections }
+    );
   }
-  return results;
 };
 
-export const searchPapers = async (query: string): Promise<any[]> => {
+export async function searchPapers(searchQuery: string): Promise<any[]> {
   try {
     // Implement paper search functionality
     return [];
   } catch (error) {
-    console.error('Error searching papers:', error);
     throw new ResearchException(
       ResearchError.API_ERROR,
-      `Failed to search papers: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      { originalError: error }
+      error instanceof Error ? error.message : 'Failed to search papers',
+      { error, searchQuery }
     );
   }
 };
@@ -251,11 +328,6 @@ export const generateReferences = async (topic: string): Promise<string[]> => {
 // Supabase database operations
 export const saveResearch = async (researchData: any): Promise<{ id: string }> => {
   try {
-    const supabase = createClient(
-      process.env.SUPABASE_URL || '',
-      process.env.SUPABASE_ANON_KEY || ''
-    );
-
     const { data, error } = await supabase
       .from('research')
       .insert(researchData)
@@ -275,11 +347,6 @@ export const saveResearch = async (researchData: any): Promise<{ id: string }> =
 
 export const getResearchHistory = async (userId: string): Promise<any[]> => {
   try {
-    const supabase = createClient(
-      process.env.SUPABASE_URL || '',
-      process.env.SUPABASE_ANON_KEY || ''
-    );
-
     const { data, error } = await supabase
       .from('research')
       .select('*')

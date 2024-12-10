@@ -33,6 +33,8 @@ export async function generateResearch(
   let references: string[] = [];
   let outline: string = '';
   let consecutiveErrors = 0;
+  let rateLimitHits = 0;
+  const maxRateLimitRetries = 3;
 
   try {
     // Generate detailed outline
@@ -52,7 +54,7 @@ export async function generateResearch(
     // Generate content for each section
     let currentProgress = 20;
     const progressPerSection = 60 / outlineItems.length;
-    const maxConsecutiveErrors = 5; // Increased from 3 to give more chances
+    const maxConsecutiveErrors = 3;
 
     for (let i = 0; i < outlineItems.length; i++) {
       const item = outlineItems[i];
@@ -62,6 +64,11 @@ export async function generateResearch(
           100,
           `Generating section ${i + 1} of ${outlineItems.length}: ${item.title}`
         );
+
+        // Add delay between sections to avoid rate limits
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
 
         const section = await generateSection(topic, item.title, item.isSubsection);
         
@@ -84,35 +91,75 @@ export async function generateResearch(
         }
 
         consecutiveErrors = 0;
+        rateLimitHits = 0;
         currentProgress += progressPerSection;
       } catch (error) {
         console.error(`Error generating section ${item.title}:`, error);
+        
+        if (error instanceof ResearchException && error.code === ResearchError.RATE_LIMIT_ERROR) {
+          rateLimitHits++;
+          if (rateLimitHits <= maxRateLimitRetries) {
+            console.log(`Rate limit hit ${rateLimitHits}/${maxRateLimitRetries}, waiting before retry...`);
+            await new Promise(resolve => setTimeout(resolve, 5000 * Math.pow(2, rateLimitHits)));
+            i--; // Retry this section
+            continue;
+          }
+        }
+
         consecutiveErrors++;
         if (consecutiveErrors >= maxConsecutiveErrors) {
           throw new ResearchException(
             ResearchError.GENERATION_ERROR,
-            `Multiple consecutive section generation failures after ${maxConsecutiveErrors} attempts. Last error: ${error instanceof Error ? error.message : 'Unknown error'}`
+            `Multiple consecutive section generation failures after ${maxConsecutiveErrors} attempts. Last error: ${error instanceof Error ? error.message : String(error)}`,
+            { originalError: error, section: item.title }
           );
         }
-        // Continue to next section after logging the error
+        
+        // Add a failed section placeholder
+        const failedSection = {
+          title: item.title,
+          content: `Failed to generate content: ${error instanceof Error ? error.message : String(error)}`,
+          number: item.number,
+          warning: 'Section generation failed'
+        };
+        
+        if (item.isSubsection) {
+          const parentNumber = item.number.split('.')[0];
+          const parentSection = sections.find(s => s.number === parentNumber);
+          if (parentSection) {
+            parentSection.subsections = parentSection.subsections || [];
+            parentSection.subsections.push(failedSection);
+          }
+        } else {
+          sections.push(failedSection);
+        }
+        
+        currentProgress += progressPerSection;
         continue;
       }
     }
 
     // Generate references
     progressCallback(80, 100, 'Generating references...');
-    references = await generateReferences(`Generate academic references for research on: ${topic}`);
-    if (!references.length) {
-      throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate references');
+    try {
+      references = await generateReferences(topic);
+    } catch (error) {
+      console.error('Error generating references:', error);
+      references = [`Failed to generate references: ${error instanceof Error ? error.message : String(error)}`];
     }
 
-    progressCallback(100, 100, 'Research generation complete!');
-    return { sections, references, outline };
+    progressCallback(100, 100, 'Research generation complete');
+    return {
+      sections: convertToResearchSections(sections),
+      references,
+      outline
+    };
   } catch (error) {
-    if (error instanceof ResearchException) throw error;
+    console.error('Error in research generation:', error);
     throw new ResearchException(
-      ResearchError.GENERATION_ERROR,
-      error instanceof Error ? error.message : 'Unknown error'
+      error instanceof ResearchException ? error.code : ResearchError.GENERATION_ERROR,
+      error instanceof Error ? error.message : String(error),
+      { originalError: error, topic }
     );
   }
 };

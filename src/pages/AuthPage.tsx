@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { setUser } from '../store/slices/authSlice'
-import { createUser, authenticateUser } from '../services/databaseService'
+import { createUser, authenticateUser } from '../services/authService'
 import {
   Container,
   Paper,
@@ -56,7 +56,11 @@ export default function AuthPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      const user = await authenticateUser(userName, password)
+      const credentials = {
+        email: userName,
+        password: password
+      };
+      const user = await authenticateUser(credentials)
       if (user) {
         dispatch(setUser(user))
         navigate('/research')
@@ -65,25 +69,25 @@ export default function AuthPage() {
       }
     } catch (error) {
       console.error('Login error:', error)
-      setError('Failed to log in. Please try again.')
+      setError(error instanceof Error ? error.message : 'Failed to log in. Please try again.')
     }
   }
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      const userData = {
-        'User-Name': userName,
-        'PassWord': password,
-        'Occupation': occupation,
-        'Location': location,
-        title: '',
-        content: '',
-        references: ''
-      }
+      const credentials = {
+        email: userName,
+        password: password,
+        metadata: {
+          name: userName,
+          occupation: occupation,
+          geolocation: location
+        }
+      };
       
-      const newUser = await createUser(userData)
-      dispatch(setUser(newUser))
+      const user = await createUser(credentials)
+      dispatch(setUser(user))
       navigate('/research')
     } catch (error) {
       console.error('Signup error:', error)
