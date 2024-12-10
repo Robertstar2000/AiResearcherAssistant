@@ -11,15 +11,6 @@ export interface DocumentMetadata {
   created: Date;
 }
 
-interface IDocumentOptions {
-  sections: {
-    properties: {
-      type: 'continuous';
-    };
-    children: any[];
-  }[];
-}
-
 // Helper functions for Word document generation
 const generateHeader = (title: string): Paragraph[] => {
   return [
