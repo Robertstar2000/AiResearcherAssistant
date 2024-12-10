@@ -127,9 +127,16 @@ async function makeGroqApiCall(
 
 const handleApiError = (error: unknown, message: string) => {
   if (error instanceof Error) {
-    throw new ResearchException(ResearchError.API_ERROR, message, { originalError: error.message })
+    throw new ResearchException(
+      ResearchError.API_ERROR,
+      message,
+      { originalError: error.message }
+    )
   }
-  throw new ResearchException(ResearchError.API_ERROR, message)
+  throw new ResearchException(
+    ResearchError.API_ERROR,
+    message
+  )
 };
 
 const makeApiCall = async <T>(
@@ -295,21 +302,28 @@ export async function getResearchHistory(userId: string): Promise<any[]> {
 
 export async function generateOutline(topic: string): Promise<string> {
     try {
-        const systemPrompt = `Create a numbered outline for a research paper on the following topic. 
-        Use the format:
-        1. First section
-        2. Second section
-        3. Third section
+        console.log('Generating outline for topic:', topic); // Debug log
+        
+        const systemPrompt = `Create a numbered outline for a research paper on the following topic.
+        Use this exact format (including the period after numbers):
+        1. Introduction
+        2. Background
+        3. Methods
         etc.
         
-        Keep the outline clear and well-structured.`;
+        Each section must start with a number followed by a period and a space.
+        Keep the outline clear and well-structured with 5-7 main sections.`;
         
         const response = await makeApiCall(
             () => makeGroqApiCall(topic, undefined, systemPrompt),
             'Failed to generate outline'
         );
-        return response.choices[0].message.content.trim();
+        
+        const outline = response.choices[0].message.content.trim();
+        console.log('Generated outline:', outline); // Debug log
+        return outline;
     } catch (error) {
+        console.error('Error generating outline:', error);
         throw new ResearchException(
             ResearchError.API_ERROR,
             error instanceof Error ? error.message : 'Unknown error'
@@ -334,46 +348,49 @@ export async function generateDetailedOutline(topic: string): Promise<string> {
 
 export function parseSectionsFromOutline(outline: string): string[] {
   if (!outline || typeof outline !== 'string') {
+    console.error('Invalid outline input:', outline);
     throw new ResearchException(
       ResearchError.PARSING_ERROR,
-      'Invalid outline format: Outline must be a non-empty string'
+      'Invalid outline: Input must be a non-empty string'
     );
   }
 
   try {
     const sections: string[] = [];
-    const lines = outline.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    const lines = outline.split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
     
-    // Match various outline formats:
-    // - "1. Section title"
-    // - "1.1 Section title"
-    // - "I. Section title"
-    // - "A. Section title"
-    // - "• Section title"
-    // - "- Section title"
-    const sectionPattern = /^(?:\d+\.|\d+\.\d+|\w+\.|\•|\-)\s+(.+)$/;
+    console.log('Processing outline lines:', lines); // Debug log
+    
+    // Support multiple formats including numbered, lettered, and bullet points
+    const sectionPattern = /^(?:\d+\.|\d+\.\d+|\w+\.|\•|\-)\s*(.+)$/;
     
     for (const line of lines) {
-      if (sectionPattern.test(line)) {
-        // Extract just the section title without the numbering
-        const match = line.match(sectionPattern);
-        if (match && match[1]) {
-          sections.push(match[1].trim());
-        } else {
-          sections.push(line.trim());
-        }
+      console.log('Processing line:', line); // Debug log
+      const match = sectionPattern.exec(line);
+      if (match) {
+        const section = match[1].trim();
+        console.log('Found section:', section); // Debug log
+        sections.push(section);
+      } else {
+        console.log('Line did not match pattern:', line); // Debug log
       }
     }
     
     if (sections.length === 0) {
+      console.error('No sections found in outline. Original outline:', outline);
       throw new ResearchException(
         ResearchError.PARSING_ERROR,
-        'No valid sections found in outline'
+        'No valid sections found in outline. Please ensure the outline is properly formatted.'
       );
     }
     
+    console.log('Successfully parsed sections:', sections); // Debug log
     return sections;
   } catch (error) {
+    console.error('Error parsing outline:', error);
+    console.error('Original outline:', outline);
     if (error instanceof ResearchException) {
       throw error;
     }
