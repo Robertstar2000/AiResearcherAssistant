@@ -56,11 +56,13 @@ export async function generateResearch(
     let currentProgress = 20;
     const progressPerSection = 60 / outlineItems.length;
     const maxConsecutiveErrors = 3;
+    console.log('Starting section generation with outline items:', outlineItems);
 
     for (let i = 0; i < outlineItems.length; i++) {
       const item = outlineItems[i];
       
       try {
+        console.log(`Attempting to generate section ${i + 1}: ${item.title}`);
         progressCallback(
           currentProgress,
           100,
@@ -69,19 +71,25 @@ export async function generateResearch(
 
         // Add base delay between sections to avoid rate limits
         if (i > 0) {
-          const currentDelay = baseDelay * Math.pow(2, rateLimitHits);
+          const currentDelay = baseDelay * Math.pow(1.5, rateLimitHits); // Reduced exponential factor
+          console.log(`Applying delay of ${currentDelay/1000} seconds before next section`);
           progressCallback(
             currentProgress,
             100,
-            `Waiting ${currentDelay/1000} seconds before generating next section...`
+            `Processing reasearch for ${currentDelay/1000} seconds before generating next section...`
           );
           await new Promise(resolve => setTimeout(resolve, currentDelay));
         }
 
         const section = await generateSection(topic, item.title, item.isSubsection);
+        console.log(`Successfully generated section: ${item.title}`);
         
         if (section.warning) {
           console.warn(`Warning for section ${item.title}:`, section.warning);
+        }
+
+        if (!section || !section.content) {
+          throw new ResearchException(ResearchError.GENERATION_ERROR, `Failed to generate content for section: ${item.title}`);
         }
 
         // Update section number
@@ -94,9 +102,13 @@ export async function generateResearch(
           if (parentSection) {
             parentSection.subsections = parentSection.subsections || [];
             parentSection.subsections.push(section);
+            console.log(`Added subsection ${item.number} to parent ${parentNumber}`);
+          } else {
+            console.warn(`Could not find parent section for subsection ${item.number}`);
           }
         } else {
           sections.push(section);
+          console.log(`Added main section ${item.number}`);
         }
 
         consecutiveErrors = 0;
@@ -108,7 +120,7 @@ export async function generateResearch(
         if (error instanceof ResearchException && error.code === ResearchError.RATE_LIMIT_ERROR) {
           rateLimitHits++;
           if (rateLimitHits <= maxRateLimitRetries) {
-            const retryDelay = baseDelay * Math.pow(2, rateLimitHits);
+            const retryDelay = baseDelay * Math.pow(1.5, rateLimitHits);
             progressCallback(
               currentProgress,
               100,

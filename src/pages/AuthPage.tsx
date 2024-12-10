@@ -40,6 +40,7 @@ function TabPanel(props: TabPanelProps) {
 export default function AuthPage() {
   const [tab, setTab] = useState(0)
   const [userName, setUserName] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [occupation, setOccupation] = useState('')
   const [location, setLocation] = useState('')
@@ -53,70 +54,93 @@ export default function AuthPage() {
     setError(null)
   }
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSignup = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setError(null)
+
     try {
-      const credentials = {
-        email: userName,
-        password: password
-      };
-      const user = await authenticateUser(credentials)
-      if (user) {
-        dispatch(setUser(user))
-        navigate('/research')
-      } else {
-        setError('Invalid username or password')
+      if (!email || !password || !userName) {
+        throw new Error('Please fill in all required fields')
       }
-    } catch (error) {
-      console.error('Login error:', error)
-      setError(error instanceof Error ? error.message : 'Failed to log in. Please try again.')
+
+      const user = await createUser({
+        email,
+        password,
+        metadata: {
+          name: userName,
+          occupation,
+          geolocation: location
+        }
+      })
+
+      dispatch(setUser(user))
+      navigate('/research')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create account')
     }
   }
 
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleLogin = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setError(null)
+
     try {
-      const credentials = {
-        email: userName,
-        password: password,
-        metadata: {
-          name: userName,
-          occupation: occupation,
-          geolocation: location
-        }
-      };
-      
-      const user = await createUser(credentials)
+      if (!email || !password) {
+        throw new Error('Please fill in all required fields')
+      }
+
+      const user = await authenticateUser({
+        email,
+        password
+      })
+
       dispatch(setUser(user))
       navigate('/research')
-    } catch (error) {
-      console.error('Signup error:', error)
-      setError(error instanceof Error ? error.message : 'Failed to create account. Please try again.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to log in')
     }
   }
 
   return (
     <Container component="main" maxWidth="sm">
-      <Paper elevation={6} sx={{ mt: 8, p: 4 }}>
-        <Typography component="h1" variant="h5" align="center" gutterBottom>
-          AI Researcher Assistant
+      <Paper 
+        elevation={3} 
+        sx={{ 
+          mt: 8,
+          p: 4,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          background: 'linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%)'
+        }}
+      >
+        <Typography component="h1" variant="h5" sx={{ mb: 3 }}>
+          {tab === 0 ? 'Sign Up for Free' : 'Welcome Back'}
         </Typography>
-        
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-          <Tabs value={tab} onChange={handleTabChange} centered>
-            <Tab label="Login" />
-            <Tab label="Sign Up" />
-          </Tabs>
-        </Box>
+
+        <Tabs value={tab} onChange={handleTabChange} sx={{ mb: 3 }}>
+          <Tab label="Sign Up" />
+          <Tab label="Login" />
+        </Tabs>
 
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert severity="error" sx={{ mb: 2, width: '100%' }}>
             {error}
           </Alert>
         )}
 
         <TabPanel value={tab} index={0}>
-          <form onSubmit={handleLogin}>
+          <Box component="form" onSubmit={handleSignup} sx={{ width: '100%' }}>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              sx={{ mb: 2 }}
+            />
             <TextField
               margin="normal"
               required
@@ -124,6 +148,7 @@ export default function AuthPage() {
               label="Username"
               value={userName}
               onChange={(e) => setUserName(e.target.value)}
+              sx={{ mb: 2 }}
             />
             <TextField
               margin="normal"
@@ -133,62 +158,77 @@ export default function AuthPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-            />
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2 }}
-            >
-              Login
-            </Button>
-          </form>
-        </TabPanel>
-
-        <TabPanel value={tab} index={1}>
-          <form onSubmit={handleSignup}>
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              label="Username"
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
+              sx={{ mb: 2 }}
             />
             <TextField
               margin="normal"
-              required
-              fullWidth
-              label="Password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <TextField
-              margin="normal"
-              required
               fullWidth
               label="Occupation"
               value={occupation}
               onChange={(e) => setOccupation(e.target.value)}
+              sx={{ mb: 2 }}
             />
             <TextField
               margin="normal"
-              required
               fullWidth
               label="Location"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
+              sx={{ mb: 3 }}
             />
             <Button
               type="submit"
               fullWidth
               variant="contained"
-              sx={{ mt: 3, mb: 2 }}
+              color="primary"
+              size="large"
+              sx={{ 
+                mt: 2,
+                mb: 2,
+                background: 'linear-gradient(45deg, #FF4081 30%, #FF8E53 90%)',
+                '&:hover': {
+                  background: 'linear-gradient(45deg, #FF4081 10%, #FF8E53 70%)',
+                }
+              }}
             >
-              Sign Up
+              Create Account
             </Button>
-          </form>
+          </Box>
+        </TabPanel>
+
+        <TabPanel value={tab} index={1}>
+          <Box component="form" onSubmit={handleLogin} sx={{ width: '100%' }}>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              sx={{ mb: 3 }}
+            />
+            <Button
+              type="submit"
+              fullWidth
+              variant="contained"
+              color="primary"
+              size="large"
+              sx={{ mt: 2, mb: 2 }}
+            >
+              Sign In
+            </Button>
+          </Box>
         </TabPanel>
       </Paper>
     </Container>
