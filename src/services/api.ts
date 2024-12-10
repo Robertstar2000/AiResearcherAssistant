@@ -6,6 +6,7 @@ import { ResearchException, ResearchError } from './researchErrors';
 const supabaseUrl = process.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_KEY || import.meta.env.VITE_SUPABASE_KEY;
 const GROQ_API_KEY = process.env.VITE_GROQ_API_KEY || import.meta.env.VITE_GROQ_API_KEY;
+const GROQ_API_URL = process.env.VITE_GROQ_API_URL || import.meta.env.VITE_GROQ_API_URL || 'https://api.groq.com/openai/v1/chat/completions';
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase environment variables');
@@ -33,12 +34,13 @@ if (!GROQ_API_KEY) {
 }
 
 const GROQ_CONFIG = {
-  API_URL: 'https://api.groq.com/v1/completions',
+  API_URL: GROQ_API_URL,
   API_KEY: GROQ_API_KEY,
   MODEL: 'mixtral-8x7b-32768',
   TEMPERATURE: 0.7,
   MAX_TOKENS: 32000,
-  MAX_RETRIES: 3
+  MAX_RETRIES: 3,
+  BASE_DELAY: 20000 // 20 seconds base delay
 };
 
 // API Types
@@ -71,8 +73,8 @@ export interface ResearchSection {
 
 // Helper Functions
 const waitBetweenCalls = async (retryCount = 0): Promise<void> => {
-  const baseDelay = 2000;
-  const delay = baseDelay * Math.pow(2, retryCount);
+  const delay = GROQ_CONFIG.BASE_DELAY * Math.pow(2, retryCount);
+  console.log(`Waiting ${delay/1000} seconds before next call...`);
   await new Promise(resolve => setTimeout(resolve, delay));
 };
 
@@ -104,18 +106,28 @@ const makeGroqApiCall = async (
   };
 
   try {
+    console.log('Making API call to GROQ...');
     const response = await axios.post(GROQ_CONFIG.API_URL, requestData, {
       headers: {
         'Authorization': `Bearer ${GROQ_CONFIG.API_KEY}`,
         'Content-Type': 'application/json'
       }
     });
+    console.log('API call successful');
     return response.data;
   } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 429) {
+    console.error('API call failed:', error);
+    if (axios.isAxiosError(error)) {
+      if (error.response?.status === 429) {
+        throw new ResearchException(
+          ResearchError.RATE_LIMIT_ERROR,
+          'API rate limit exceeded',
+          { originalError: error }
+        );
+      }
       throw new ResearchException(
-        ResearchError.RATE_LIMIT_ERROR,
-        'API rate limit exceeded',
+        ResearchError.API_ERROR,
+        `API call failed: ${error.response?.data?.error?.message || error.message}`,
         { originalError: error }
       );
     }
