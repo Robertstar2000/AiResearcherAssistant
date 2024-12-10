@@ -207,10 +207,9 @@ export const generateSection = async (
     const systemPrompt = `You are a research content generator. Generate detailed, academic content in post graduate level language for the given section. The content must be at least ${minWords} words long. If you cannot generate the full content in one response, focus on providing a complete and coherent portion that can be expanded later.`;
     const prompt = `Generate comprehensive academic content for the section "${sectionTitle}" in research about "${topic}". The content should be at least ${minWords} words long and maintain high academic standards.`;
 
-    // Add delay between section generations to avoid rate limits
-    if (retryCount === 0) {
-      await waitBetweenCalls(0);
-    }
+    // Always wait 20 seconds before generating a section
+    await new Promise(resolve => setTimeout(resolve, 20000));
+    console.log(`Starting generation for section "${sectionTitle}" after 20-second delay`);
 
     const response = await makeApiCall(
       () => makeGroqApiCall(prompt, GROQ_CONFIG.MAX_TOKENS, systemPrompt),
@@ -224,6 +223,7 @@ export const generateSection = async (
     // If content is too short and we haven't exceeded max retries, try again
     if (wordCount < minWords && retryCount < GROQ_CONFIG.MAX_RETRIES) {
       console.log(`Generated content too short (${wordCount}/${minWords} words) for "${sectionTitle}". Retrying... (${retryCount + 1}/${GROQ_CONFIG.MAX_RETRIES})`);
+      await waitBetweenCalls(retryCount);
       return generateSection(topic, sectionTitle, isSubsection, retryCount + 1);
     }
 
@@ -234,6 +234,13 @@ export const generateSection = async (
       warning: wordCount < minWords ? `Content length (${wordCount} words) is below the minimum requirement of ${minWords} words.` : undefined
     };
   } catch (error) {
+    if (error instanceof ResearchException && error.code === ResearchError.RATE_LIMIT_ERROR) {
+      if (retryCount < GROQ_CONFIG.MAX_RETRIES) {
+        console.log(`Rate limit hit for "${sectionTitle}". Retrying... (${retryCount + 1}/${GROQ_CONFIG.MAX_RETRIES})`);
+        await waitBetweenCalls(retryCount);
+        return generateSection(topic, sectionTitle, isSubsection, retryCount + 1);
+      }
+    }
     console.error(`Failed to generate section "${sectionTitle}":`, error);
     throw new ResearchException(
       error instanceof ResearchException ? error.code : ResearchError.API_ERROR,
