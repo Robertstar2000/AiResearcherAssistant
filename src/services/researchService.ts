@@ -37,7 +37,7 @@ export async function generateResearch(
   try {
     // Generate detailed outline
     progressCallback(10, 100, 'Generating research outline...');
-    outline = await generateDetailedOutline(topic);
+    outline = await generateDetailedOutline(`Generate a detailed outline for research on: ${topic}`);
     if (!outline) {
       throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate outline');
     }
@@ -93,7 +93,7 @@ export async function generateResearch(
 
     // Generate references
     progressCallback(80, 100, 'Generating references...');
-    references = await generateReferences(topic);
+    references = await generateReferences(`Generate academic references for research on: ${topic}`);
     if (!references.length) {
       throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate references');
     }
@@ -166,12 +166,10 @@ const processOutlineSection = (lines: string[]): OutlineItem | null => {
     }
   }
   
-  const item = {
+  return {
     number,
     title,
     requirements,
     isSubsection: number.includes('.')
   };
-  
-  return item;
 };
