@@ -59,6 +59,7 @@ export async function generateResearch(
 
     for (let i = 0; i < outlineItems.length; i++) {
       const item = outlineItems[i];
+      
       try {
         progressCallback(
           currentProgress,
@@ -80,9 +81,10 @@ export async function generateResearch(
         const section = await generateSection(topic, item.title, item.isSubsection);
         
         if (section.warning) {
-          console.warn(`Warning for section ${item.title}: ${section.warning}`);
+          console.warn(`Warning for section ${item.title}:`, section.warning);
         }
-        
+
+        // Update section number
         section.number = item.number;
         
         // Add section to appropriate place in hierarchy
