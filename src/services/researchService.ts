@@ -35,6 +35,7 @@ export async function generateResearch(
   let consecutiveErrors = 0;
   let rateLimitHits = 0;
   const maxRateLimitRetries = 3;
+  const baseDelay = 20000; // 20 seconds base delay
 
   try {
     // Generate detailed outline
@@ -65,9 +66,15 @@ export async function generateResearch(
           `Generating section ${i + 1} of ${outlineItems.length}: ${item.title}`
         );
 
-        // Add delay between sections to avoid rate limits
+        // Add base delay between sections to avoid rate limits
         if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          const currentDelay = baseDelay * Math.pow(2, rateLimitHits);
+          progressCallback(
+            currentProgress,
+            100,
+            `Waiting ${currentDelay/1000} seconds before generating next section...`
+          );
+          await new Promise(resolve => setTimeout(resolve, currentDelay));
         }
 
         const section = await generateSection(topic, item.title, item.isSubsection);
@@ -99,8 +106,13 @@ export async function generateResearch(
         if (error instanceof ResearchException && error.code === ResearchError.RATE_LIMIT_ERROR) {
           rateLimitHits++;
           if (rateLimitHits <= maxRateLimitRetries) {
-            console.log(`Rate limit hit ${rateLimitHits}/${maxRateLimitRetries}, waiting before retry...`);
-            await new Promise(resolve => setTimeout(resolve, 5000 * Math.pow(2, rateLimitHits)));
+            const retryDelay = baseDelay * Math.pow(2, rateLimitHits);
+            progressCallback(
+              currentProgress,
+              100,
+              `Rate limit hit ${rateLimitHits}/${maxRateLimitRetries}, waiting ${retryDelay/1000} seconds before retry...`
+            );
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
             i--; // Retry this section
             continue;
           }
