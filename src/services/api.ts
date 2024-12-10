@@ -295,8 +295,17 @@ export async function getResearchHistory(userId: string): Promise<any[]> {
 
 export async function generateOutline(topic: string): Promise<string> {
     try {
+        const systemPrompt = `Create a numbered outline for a research paper on the following topic. 
+        Use the format:
+        1. First section
+        2. Second section
+        3. Third section
+        etc.
+        
+        Keep the outline clear and well-structured.`;
+        
         const response = await makeApiCall(
-            () => makeGroqApiCall(topic),
+            () => makeGroqApiCall(topic, undefined, systemPrompt),
             'Failed to generate outline'
         );
         return response.choices[0].message.content.trim();
@@ -324,14 +333,53 @@ export async function generateDetailedOutline(topic: string): Promise<string> {
 };
 
 export function parseSectionsFromOutline(outline: string): string[] {
-  const sections: string[] = [];
-  const lines = outline.split('\n').map((line: string) => line.trim());
-  
-  for (const line of lines) {
-    if (/^\d+\./.test(line)) {
-      sections.push(line);
-    }
+  if (!outline || typeof outline !== 'string') {
+    throw new ResearchException(
+      ResearchError.PARSING_ERROR,
+      'Invalid outline format: Outline must be a non-empty string'
+    );
   }
-  
-  return sections;
+
+  try {
+    const sections: string[] = [];
+    const lines = outline.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    
+    // Match various outline formats:
+    // - "1. Section title"
+    // - "1.1 Section title"
+    // - "I. Section title"
+    // - "A. Section title"
+    // - "• Section title"
+    // - "- Section title"
+    const sectionPattern = /^(?:\d+\.|\d+\.\d+|\w+\.|\•|\-)\s+(.+)$/;
+    
+    for (const line of lines) {
+      if (sectionPattern.test(line)) {
+        // Extract just the section title without the numbering
+        const match = line.match(sectionPattern);
+        if (match && match[1]) {
+          sections.push(match[1].trim());
+        } else {
+          sections.push(line.trim());
+        }
+      }
+    }
+    
+    if (sections.length === 0) {
+      throw new ResearchException(
+        ResearchError.PARSING_ERROR,
+        'No valid sections found in outline'
+      );
+    }
+    
+    return sections;
+  } catch (error) {
+    if (error instanceof ResearchException) {
+      throw error;
+    }
+    throw new ResearchException(
+      ResearchError.PARSING_ERROR,
+      'Failed to parse outline: ' + (error instanceof Error ? error.message : 'Unknown error')
+    );
+  }
 };
