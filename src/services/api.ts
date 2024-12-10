@@ -153,15 +153,16 @@ export const generateSection = async (
 
     const response = await makeApiCall(
       () => makeGroqApiCall(prompt, GROQ_CONFIG.MAX_TOKENS, systemPrompt),
-      'Failed to generate section'
+      'Failed to generate section',
+      3
     );
 
     const content = response.choices[0].message.content.trim();
     const wordCount = content.split(/\s+/).length;
 
     // If content is too short and we haven't exceeded max retries, try again
-    if (wordCount < minWords && retryCount < maxRetries) {
-      console.log(`Generated content too short (${wordCount}/${minWords} words). Retrying... (${retryCount + 1}/${maxRetries})`);
+    if (wordCount < minWords && retryCount < 3) {
+      console.log(`Generated content too short (${wordCount}/${minWords} words). Retrying... (${retryCount + 1}/3)`);
       return generateSection(topic, sectionTitle, isSubsection, retryCount + 1);
     }
 
@@ -174,8 +175,8 @@ export const generateSection = async (
       })
     };
   } catch (error) {
-    if (retryCount < maxRetries) {
-      console.log(`Error generating section. Retrying... (${retryCount + 1}/${maxRetries})`);
+    if (retryCount < 3) {
+      console.log(`Error generating section. Retrying... (${retryCount + 1}/3)`);
       return generateSection(topic, sectionTitle, isSubsection, retryCount + 1);
     }
     throw new ResearchException(
@@ -194,14 +195,16 @@ export const generateSectionBatch = async (
   for (const section of sections) {
     try {
       const response = await makeApiCall(
-        () => makeGroqApiCall(section.prompt),
-        'Failed to generate section batch'
+        () => makeGroqApiCall(section.prompt, GROQ_CONFIG.MAX_TOKENS),
+        'Failed to generate section batch',
+        3
       );
       results.push(response.choices[0].message.content.trim());
     } catch (error) {
+      console.error(`Error generating batch section: ${section.sectionTitle}`, error);
       throw new ResearchException(
         ResearchError.API_ERROR,
-        error instanceof Error ? error.message : 'Unknown error',
+        `Failed to generate section: ${section.sectionTitle}. ${error instanceof Error ? error.message : 'Unknown error'}`,
         { originalError: error }
       );
     }
@@ -214,9 +217,10 @@ export const searchPapers = async (query: string): Promise<any[]> => {
     // Implement paper search functionality
     return [];
   } catch (error) {
+    console.error('Error searching papers:', error);
     throw new ResearchException(
       ResearchError.API_ERROR,
-      error instanceof Error ? error.message : 'Unknown error',
+      `Failed to search papers: ${error instanceof Error ? error.message : 'Unknown error'}`,
       { originalError: error }
     );
   }
@@ -322,19 +326,50 @@ Please format the outline with:
 
 export const generateDetailedOutline = async (topic: string): Promise<string> => {
   try {
-    const outline = await generateOutline(topic);
+    const systemPrompt = 'You are a research outline generator. Generate a detailed outline with main sections (1., 2., etc.) and subsections (a., b., etc.).';
+    const prompt = `Generate a detailed outline for research about: ${topic}
+
+Please format the outline with:
+1. Main sections numbered (1., 2., etc.)
+2. Subsections lettered (a., b., etc.)
+3. Include brief descriptions of what each section will cover
+4. Ensure logical flow and progression of ideas
+5. Include standard research paper sections (Introduction, Methodology, Results, Discussion, Conclusion)`;
+
+    const response = await makeApiCall(
+      () => makeGroqApiCall(prompt, GROQ_CONFIG.MAX_TOKENS, systemPrompt),
+      'Failed to generate detailed outline',
+      3  // Fixed number of retries
+    );
+
+    const outline = response.choices[0].message.content.trim();
+    if (!outline) {
+      throw new ResearchException(
+        ResearchError.GENERATION_ERROR,
+        'Generated outline is empty',
+        { topic }
+      );
+    }
+
     return outline;
   } catch (error) {
+    console.error('Error generating detailed outline:', error);
     throw new ResearchException(
       ResearchError.API_ERROR,
-      error instanceof Error ? error.message : 'Unknown error',
-      { originalError: error }
+      `Failed to generate detailed outline: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      { originalError: error, topic }
     );
   }
 };
 
+// This function is deprecated. Use parseDetailedOutline from researchService.ts instead
 export const parseSectionsFromOutline = (outline: string): string[] => {
+  console.warn('Warning: parseSectionsFromOutline is deprecated. Use parseDetailedOutline from researchService.ts instead');
   try {
+    if (!outline || typeof outline !== 'string') {
+      throw new Error('Invalid outline: must be a non-empty string');
+    }
+
     const lines = outline.split('\n');
     const sections: string[] = [];
     let currentSection = '';
@@ -347,23 +382,14 @@ export const parseSectionsFromOutline = (outline: string): string[] => {
       const isMainSection = /^\d+\./.test(line.trim());
       const isSubSection = /^[a-z]\.|\([a-z]\)/.test(line.trim().toLowerCase());
 
-      if (isMainSection) {
-        if (currentSection) {
-          sections.push(currentSection.trim());
-        }
-        currentSection = line.trim();
-      } else if (isSubSection) {
+      if (isMainSection || isSubSection) {
         if (currentSection) {
           sections.push(currentSection.trim());
         }
         currentSection = line.trim();
       } else {
         // If it's a continuation of the current section, append it
-        if (currentSection) {
-          currentSection += ' ' + line.trim();
-        } else {
-          currentSection = line.trim();
-        }
+        currentSection = currentSection ? `${currentSection} ${line.trim()}` : line.trim();
       }
     }
 
@@ -372,12 +398,17 @@ export const parseSectionsFromOutline = (outline: string): string[] => {
       sections.push(currentSection.trim());
     }
 
+    if (sections.length === 0) {
+      throw new Error('No sections found in outline');
+    }
+
     return sections;
   } catch (error) {
+    console.error('Error parsing outline:', error);
     throw new ResearchException(
       ResearchError.PARSING_ERROR,
-      'Failed to parse outline: ' + (error instanceof Error ? error.message : 'Unknown error'),
-      { originalError: error }
+      `Failed to parse outline: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      { originalError: error, outline }
     );
   }
 };
