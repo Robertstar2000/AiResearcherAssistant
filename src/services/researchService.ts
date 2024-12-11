@@ -1,5 +1,6 @@
 import { generateDetailedOutline, generateSection, generateReferences } from './api';
 import { ResearchError, ResearchException } from './researchErrors';
+import { store } from '../store';
 
 interface OutlineItem {
   number: string;
@@ -25,6 +26,30 @@ const convertToResearchSections = (sections: any[]): any[] => {
   }));
 };
 
+// Extract section count from outline
+const getSectionCount = (outline: string): number => {
+  const mainSections = outline.match(/^\d+\./gm);
+  return mainSections ? mainSections.length : 0;
+};
+
+// Validate section count based on mode and type
+const validateSectionCount = (count: number, mode: string, type: string): boolean => {
+  switch (`${mode}-${type}`.toLowerCase()) {
+    case 'basic-literature':
+    case 'basic-general':
+      return count >= 6 && count <= 12;
+    case 'basic-experimental':
+      return count >= 9 && count <= 15;
+    case 'advanced-literature':
+    case 'advanced-general':
+      return count >= 9 && count <= 18;
+    case 'advanced-experimental':
+      return count >= 12 && count <= 24;
+    default:
+      return false;
+  }
+};
+
 export async function generateResearch(
   topic: string,
   progressCallback: (progress: number, total: number, message: string) => void
@@ -43,6 +68,14 @@ export async function generateResearch(
     outline = await generateDetailedOutline(`Generate a detailed outline for research on: ${topic}`);
     if (!outline) {
       throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate outline');
+    }
+
+    const sectionCount = getSectionCount(outline);
+    const { mode, type } = store.getState().research;
+
+    if (!validateSectionCount(sectionCount, mode, type)) {
+      console.log(`Section count ${sectionCount} invalid for ${mode}-${type}, regenerating outline...`);
+      return generateResearch(topic, progressCallback); // Retry generation
     }
 
     // Parse outline into sections

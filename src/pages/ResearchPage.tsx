@@ -383,18 +383,20 @@ const ResearchPage = () => {
 
   const handleDownloadWord = async () => {
     try {
-      if (!user) {
-        throw new ResearchException(ResearchError.AUTH_ERROR, 'User not authenticated');
+      if (!user || !user.name) {
+        dispatch(setError('Please sign in to download documents'));
+        return;
       }
 
       if (!research.sections || research.sections.length === 0) {
-        throw new ResearchException(ResearchError.GENERATION_ERROR, 'No research content available');
+        dispatch(setError('No research content available'));
+        return;
       }
 
       setIsLoading(true);
       const blob = await generateWordDocument({
         title: research.title,
-        author: user.name || 'Anonymous',
+        author: user.name,
         sections: research.sections,
         references: research.references || []
       });
@@ -414,18 +416,20 @@ const ResearchPage = () => {
 
   const handleDownloadPdf = async () => {
     try {
-      if (!user) {
-        throw new ResearchException(ResearchError.AUTH_ERROR, 'User not authenticated');
+      if (!user || !user.name) {
+        dispatch(setError('Please sign in to download documents'));
+        return;
       }
 
       if (!research.sections || research.sections.length === 0) {
-        throw new ResearchException(ResearchError.GENERATION_ERROR, 'No research content available');
+        dispatch(setError('No research content available'));
+        return;
       }
 
       setIsLoading(true);
       const metadata = {
         title: research.title,
-        author: user.name || 'Anonymous',
+        author: user.name,
         created: new Date()
       };
 
