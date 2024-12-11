@@ -389,11 +389,16 @@ const ResearchPage = () => {
         throw new ResearchException(ResearchError.AUTH_ERROR, 'User not authenticated');
       }
 
+      if (!research.sections || research.sections.length === 0) {
+        throw new ResearchException(ResearchError.GENERATION_ERROR, 'No research content available');
+      }
+
+      setIsLoading(true);
       const blob = await generateWordDocument({
         title: research.title,
-        author: user.name,
+        author: user.name || 'Anonymous',
         sections: research.sections,
-        references: research.references
+        references: research.references || []
       });
 
       downloadDocument(blob, `${research.title.replace(/[^a-zA-Z0-9]/g, '_')}.docx`);
@@ -401,69 +406,76 @@ const ResearchPage = () => {
       if (error instanceof ResearchException) {
         dispatch(setError(error.message));
       } else {
-        dispatch(setError('Error generating Word document'));
+        dispatch(setError('Failed to generate Word document'));
       }
+      console.error('Word document generation error:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleDownloadPdf = async () => {
-    if (!research || !user) return;
     try {
+      if (!user) {
+        throw new ResearchException(ResearchError.AUTH_ERROR, 'User not authenticated');
+      }
+
+      if (!research.sections || research.sections.length === 0) {
+        throw new ResearchException(ResearchError.GENERATION_ERROR, 'No research content available');
+      }
+
+      setIsLoading(true);
       const metadata = {
         title: research.title,
-        author: user.name,
+        author: user.name || 'Anonymous',
         created: new Date()
       };
-      const blob = await generatePdfDocument(metadata, research.sections, research.references);
+
+      const blob = await generatePdfDocument(
+        metadata,
+        research.sections,
+        research.references || []
+      );
+
       downloadDocument(blob, `${research.title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
     } catch (error) {
-      console.error('Error downloading PDF:', error);
       if (error instanceof ResearchException) {
         dispatch(setError(error.message));
       } else {
-        dispatch(setError('Error generating PDF document'));
+        dispatch(setError('Failed to generate PDF document'));
       }
+      console.error('PDF document generation error:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const exportButtons = (
-    <Box sx={{ display: 'flex', gap: 2, mt: 2, mb: 2 }}>
-      <Button
-        variant="contained"
-        onClick={handleDownloadWord}
-        disabled={!canExport}
-        startIcon={<ArticleIcon />}
-        sx={{ 
-          backgroundColor: canExport ? 'primary.main' : 'grey.500',
-          '&:hover': {
-            backgroundColor: canExport ? 'primary.dark' : 'grey.600'
-          },
-          '&.Mui-disabled': {
-            backgroundColor: 'grey.300',
-            color: 'grey.500'
-          }
-        }}
-      >
-        Word
-      </Button>
-      <Button
-        variant="contained"
-        onClick={handleDownloadPdf}
-        disabled={!canExport}
-        startIcon={<PictureAsPdfIcon />}
-        sx={{ 
-          backgroundColor: canExport ? 'primary.main' : 'grey.500',
-          '&:hover': {
-            backgroundColor: canExport ? 'primary.dark' : 'grey.600'
-          },
-          '&.Mui-disabled': {
-            backgroundColor: 'grey.300',
-            color: 'grey.500'
-          }
-        }}
-      >
-        PDF
-      </Button>
+    <Box sx={{ display: 'flex', gap: 1 }}>
+      <Tooltip title={!research.sections.length ? 'Generate research content first' : 'Download as Word document'}>
+        <span>
+          <Button
+            variant="contained"
+            onClick={handleDownloadWord}
+            disabled={!research.sections.length || isLoading}
+            startIcon={<ArticleIcon />}
+          >
+            Word
+          </Button>
+        </span>
+      </Tooltip>
+      <Tooltip title={!research.sections.length ? 'Generate research content first' : 'Download as PDF document'}>
+        <span>
+          <Button
+            variant="contained"
+            onClick={handleDownloadPdf}
+            disabled={!research.sections.length || isLoading}
+            startIcon={<PictureAsPdfIcon />}
+          >
+            PDF
+          </Button>
+        </span>
+      </Tooltip>
     </Box>
   );
 

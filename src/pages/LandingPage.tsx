@@ -211,36 +211,44 @@ const LandingPage = () => {
       </Grid>
 
       {/* AI Scientists Inspiration Section */}
-      <Paper sx={{ p: 4, mb: 6, background: 'linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%)' }}>
-        <Typography variant="h5" component="h2" sx={{ mb: 3, textAlign: 'center' }}>
+      <Paper sx={{ p: 3, mb: 6, background: 'linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%)' }}>
+        <Typography variant="h6" component="h2" sx={{ mb: 1, textAlign: 'center' }}>
           Inspired by Leading AI Scientists
         </Typography>
-        <Typography paragraph sx={{ textAlign: 'center', mb: 4 }}>
-          Our research assistant is built upon the groundbreaking work and insights of renowned AI scientists:
+        <Typography variant="body2" sx={{ textAlign: 'center', mb: 2 }}>
+          Built upon the groundbreaking work of the AI-Scientist project authors:
         </Typography>
-        <Grid container spacing={3} justifyContent="center">
+        <Box sx={{ 
+          display: 'grid', 
+          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' },
+          gap: 1,
+          px: 2
+        }}>
           {[
-            "Chris Lu - Pioneering work in large language models",
-            "Cong Lu - Innovations in AI research methodology",
-            "Robert Tjarko Lange - Advancements in AI learning systems",
-            "Jakob Foerster - Breakthroughs in AI cooperation",
-            "Jeff Clune - Evolution of AI systems",
-            "David Ha - Creative AI architectures"
+            "Chris Lu - Large language models",
+            "Cong Lu - AI research methodology",
+            "Robert Tjarko Lange - AI learning",
+            "Jakob Foerster - AI cooperation",
+            "Jeff Clune - AI systems evolution",
+            "David Ha - AI architectures"
           ].map((scientist, index) => (
-            <Grid item xs={12} sm={6} md={4} key={index}>
-              <Box sx={{ 
-                display: 'flex', 
-                alignItems: 'center',
-                p: 2,
-                borderRadius: 1,
-                '&:hover': { bgcolor: 'rgba(0,0,0,0.02)' }
-              }}>
-                <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
-                <Typography>{scientist}</Typography>
-              </Box>
-            </Grid>
+            <Box key={index} sx={{ 
+              display: 'flex', 
+              alignItems: 'center',
+              py: 0.5,
+              '&:hover': { bgcolor: 'rgba(0,0,0,0.02)' }
+            }}>
+              <PersonIcon sx={{ mr: 1, color: 'primary.main', fontSize: '1rem' }} />
+              <Typography variant="body2">{scientist}</Typography>
+            </Box>
           ))}
-        </Grid>
+        </Box>
+        <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 2 }}>
+          Learn more about their work at{' '}
+          <a href="https://github.com/SakanaAI/AI-Scientist" target="_blank" rel="noopener noreferrer">
+            github.com/SakanaAI/AI-Scientist
+          </a>
+        </Typography>
       </Paper>
     </Container>
   )
