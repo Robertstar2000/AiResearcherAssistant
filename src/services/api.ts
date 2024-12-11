@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
 import { ResearchException, ResearchError } from './researchErrors';
+import { store } from '../store';
 
 // API Configuration
 const supabaseUrl = process.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL;
@@ -410,109 +411,77 @@ Please format the outline with:
   }
 };
 
-export const generateDetailedOutline = async (topic: string, mode: string = 'article'): Promise<string> => {
-  try {
-    const systemPrompt = 'You are a research outline generator. Generate a detailed outline following the specified mode and requirements.';
-    
-    let prompt = `Generate a detailed outline for research about: ${topic}\n\n`;
-    
-    switch(mode.toLowerCase()) {
-      case 'article':
-        prompt += `Create a popular science level article with:
-1. 3-6 main sections
-2. Each section must be unique and engaging
-3. Must be written at a popular science level
-4. Must maintain academic rigor while being accessible
-5. Format with main sections (1., 2., etc.)`;
-        break;
-        
-      case 'basic-literature':
-        prompt += `Create a basic literature review with:
-1. 9-15 main sections
-2. Must start with abstract and end with conclusion
-3. Focus on synthesis and research gaps
-4. Format with main sections (1., 2., etc.)
-5. Each section must be unique and based on the topic
-6. Make it technical at a post graduate level`;
-        break;
-        
-      case 'basic-general':
-        prompt += `Create a basic general research outline with:
-1. 9-15 main sections
-2. Must start with abstract and end with conclusion
-3. Flexible structure for topic exploration
-4. Format with main sections (1., 2., etc.)
-5. Each section must be unique and focused on the topic
-6. Make it technical at a post graduate level`;
-        break;
-        
-      case 'basic-experimental':
-        prompt += `Create a basic experimental design outline with:
-1. 9-15 main sections
-2. Must start with abstract and end with summary
-3. Focus on using a hypothisis to design an experimental methodology 
-4. Format with main sections (1., 2., etc.)
-5. Each section must be unique and methodologically sound
-6. Make it technical at a post graduate level`;
-        break;
-        
-      case 'advanced-literature':
-        prompt += `Create an advanced literature review with:
-1. 12-24 main sections
-2. 3-6 subsections per main section
-3. Must start with abstract and end with conclusion
-4. Deep analysis of research synthesis and gaps
-5. Format with main sections (1., 2., etc.) and subsections (a., b., etc.)
-6. Each section and subsection must be unique and comprehensive
-7. Make it technical at a post graduate level`;
-        break;
-        
-      case 'advanced-general':
-        prompt += `Create an advanced general research outline with:
-1. 12-24 main sections
-2. 3-6 subsections per main section
-3. Must start with abstract and end with conclusion
-4. In-depth exploration of all topic aspects
-5. Format with main sections (1., 2., etc.) and subsections (a., b., etc.)
-6. Each section and subsection must be unique and detailed
-7. Make it technical at a post graduate level`;
-        break;
-        
-      case 'advanced-experimental':
-        prompt += `Create an advanced experimental design outline with:
-1. 12-24 main sections
-2. 3-6 subsections per main section
-3. Must start with abstract and end with summary
-4. Start with a clear hypothesis about: ${topic}
-5. Design a comprehensive experiment to prove the hypothesis
-6. Format with main sections (1., 2., etc.) and subsections (a., b., etc.)
-7. Each section and subsection must be unique and methodologically rigorous
-8. Make it technical at a post graduate level`;
-        break;
-    }
+export const generateDetailedOutline = async (topic: string): Promise<string> => {
+  const { mode, type } = store.getState().research;
+  const modeType = `${mode}-${type}`.toLowerCase();
 
+  // Get section requirements based on mode and type
+  let minSections: number;
+  let maxSections: number;
+  let requiresHypothesis = false;
+  let endSection = 'conclusion';
+
+  switch (modeType) {
+    case 'basic-literature':
+    case 'basic-general':
+      minSections = 6;
+      maxSections = 12;
+      break;
+    case 'basic-experimental':
+      minSections = 9;
+      maxSections = 15;
+      requiresHypothesis = true;
+      endSection = 'summary';
+      break;
+    case 'advanced-literature':
+    case 'advanced-general':
+      minSections = 9;
+      maxSections = 18;
+      break;
+    case 'advanced-experimental':
+      minSections = 12;
+      maxSections = 24;
+      requiresHypothesis = true;
+      endSection = 'summary';
+      break;
+    default:
+      minSections = 6;
+      maxSections = 12;
+  }
+
+  const targetSections = Math.floor((minSections + maxSections) / 2);
+
+  const systemPrompt = `You are a research outline generator. Create a detailed outline for academic research that meets these requirements:
+1. Generate EXACTLY ${targetSections} main sections (no more, no less)
+2. Start with abstract
+3. End with ${endSection}
+${requiresHypothesis ? '4. Include a clear hypothesis section\n5. Include methodology and experimental design sections' : '4. Include appropriate sections for literature review and analysis'}
+5. Each section must be numbered (1., 2., etc.)
+6. Make it technical at a post-graduate level
+7. Sections must be unique and focused on the topic`;
+
+  const prompt = `Generate a detailed research outline for: ${topic}
+
+Requirements:
+- EXACTLY ${targetSections} main sections
+- Each section must be numbered (1., 2., etc.)
+- Start with abstract
+- End with ${endSection}
+${requiresHypothesis ? '- Include hypothesis, methodology, and experimental design\n' : ''}
+- Post-graduate academic level
+- Sections must be unique and comprehensive`;
+
+  try {
     const response = await makeApiCall(
       () => makeGroqApiCall(prompt, GROQ_CONFIG.MAX_TOKENS, systemPrompt),
-      'Failed to generate detailed outline',
-      3
+      'Failed to generate detailed outline'
     );
-
-    const outline = response.choices[0].message.content.trim();
-    if (!outline) {
-      throw new ResearchException(
-        ResearchError.GENERATION_ERROR,
-        'Generated outline is empty',
-        { topic }
-      );
-    }
-
-    return outline;
+    return response.choices[0].message.content.trim();
   } catch (error) {
-    console.error('Error generating detailed outline:', error);
+    console.error('Error in generateDetailedOutline:', error);
     throw new ResearchException(
-      ResearchError.API_ERROR,
-      `Failed to generate detailed outline: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      { originalError: error, topic }
+      ResearchError.GENERATION_ERROR,
+      'Failed to generate outline'
     );
   }
 };
