@@ -1,7 +1,6 @@
-import { Document, Paragraph, Packer, HeadingLevel, AlignmentType } from 'docx';
+import { Document, Paragraph, Packer, HeadingLevel } from 'docx';
 import { PDFDocument } from 'pdf-lib';
-import { ResearchException, ResearchError } from '../utils/exceptions';
-import { Section as ResearchSection } from '../types/research';
+import { ResearchSection, SubSection } from '../types';
 
 export interface DocumentMetadata {
   title: string;
@@ -16,115 +15,32 @@ export interface DocumentOptions {
   references: string[];
 }
 
-// Helper functions for Word document generation
-const generateHeader = (title: string): Paragraph[] => {
-  return [
-    new Paragraph({
-      text: title,
-      heading: HeadingLevel.HEADING_1,
-      alignment: AlignmentType.CENTER,
-    })
-  ];
-};
+export class ResearchException extends Error {
+  constructor(public code: string, message: string) {
+    super(message);
+    this.name = 'ResearchException';
+  }
+}
 
-const generateTitle = (metadata: DocumentMetadata): Paragraph[] => {
-  return [
-    new Paragraph({
-      text: metadata.title,
-      heading: HeadingLevel.TITLE,
-      alignment: AlignmentType.CENTER,
-    }),
-    new Paragraph({
-      children: [
-        new TextRun({
-          text: `By ${metadata.author}`,
-          break: 1
-        })
-      ],
-      alignment: AlignmentType.CENTER,
-    }),
-    new Paragraph({
-      children: [
-        new TextRun({
-          text: metadata.created.toLocaleDateString(),
-          break: 1
-        })
-      ],
-      alignment: AlignmentType.CENTER,
-    })
-  ];
-};
-
-const generateSections = (sections: ResearchSection[]): Paragraph[] => {
-  const paragraphs: Paragraph[] = [];
-
-  sections.forEach(section => {
-    paragraphs.push(
-      new Paragraph({
-        text: section.title,
-        heading: HeadingLevel.HEADING_2,
-        alignment: AlignmentType.LEFT,
-      }),
-      new Paragraph({
-        text: section.content,
-        alignment: AlignmentType.JUSTIFIED,
-      })
-    );
-
-    if (section.subsections) {
-      section.subsections.forEach(subsection => {
-        paragraphs.push(
-          new Paragraph({
-            text: subsection.title,
-            heading: HeadingLevel.HEADING_3,
-            alignment: AlignmentType.LEFT,
-          }),
-          new Paragraph({
-            text: subsection.content,
-            alignment: AlignmentType.JUSTIFIED,
-          })
-        );
-      });
-    }
-  });
-
-  return paragraphs;
-};
-
-const generateReferences = (references: string[]): Paragraph[] => {
-  const paragraphs: Paragraph[] = [
-    new Paragraph({
-      text: 'References',
-      heading: HeadingLevel.HEADING_1,
-      alignment: AlignmentType.LEFT,
-    })
-  ];
-
-  references.forEach(reference => {
-    paragraphs.push(
-      new Paragraph({
-        text: reference,
-        alignment: AlignmentType.LEFT,
-      })
-    );
-  });
-
-  return paragraphs;
-};
+export const ResearchError = {
+  GENERATION_ERROR: 'GENERATION_ERROR',
+  AUTH_ERROR: 'AUTH_ERROR'
+} as const;
 
 const convertToMarkdown = (sections: ResearchSection[]): string => {
   let markdown = '';
-  sections.forEach(section => {
+  sections.forEach((section, sectionIndex) => {
     if (section.title) {
-      markdown += `# ${section.title}\n\n`;
+      markdown += `${sectionIndex + 1}. ${section.title}\n\n`;
     }
     if (section.content) {
       markdown += `${section.content}\n\n`;
     }
     if (section.subsections && section.subsections.length > 0) {
-      section.subsections.forEach(subsection => {
+      section.subsections.forEach((subsection: SubSection, subIndex: number) => {
+        const letter = String.fromCharCode(97 + subIndex); // 97 is ASCII for 'a'
         if (subsection.title) {
-          markdown += `## ${subsection.title}\n\n`;
+          markdown += `${letter}. ${subsection.title}\n\n`;
         }
         if (subsection.content) {
           markdown += `${subsection.content}\n\n`;
@@ -139,27 +55,30 @@ const parseMarkdownToDocx = (markdown: string): Paragraph[] => {
   const paragraphs: Paragraph[] = [];
   const lines = markdown.split('\n');
   lines.forEach(line => {
-    if (line.startsWith('# ')) {
-      paragraphs.push(
-        new Paragraph({
-          text: line.substring(2),
-          heading: HeadingLevel.HEADING_2,
-          alignment: AlignmentType.LEFT,
-        })
-      );
-    } else if (line.startsWith('## ')) {
-      paragraphs.push(
-        new Paragraph({
-          text: line.substring(3),
-          heading: HeadingLevel.HEADING_3,
-          alignment: AlignmentType.LEFT,
-        })
-      );
-    } else {
+    const mainSectionMatch = line.match(/^(\d+)\.\s+(.+)/);
+    const subSectionMatch = line.match(/^([a-z])\.\s+(.+)/);
+    
+    if (mainSectionMatch) {
       paragraphs.push(
         new Paragraph({
           text: line,
-          alignment: AlignmentType.JUSTIFIED,
+          heading: HeadingLevel.HEADING_1,
+          spacing: { before: 400, after: 200 }
+        })
+      );
+    } else if (subSectionMatch) {
+      paragraphs.push(
+        new Paragraph({
+          text: line,
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 200, after: 200 }
+        })
+      );
+    } else if (line.trim()) {
+      paragraphs.push(
+        new Paragraph({
+          text: line,
+          spacing: { after: 200 }
         })
       );
     }
@@ -167,7 +86,6 @@ const parseMarkdownToDocx = (markdown: string): Paragraph[] => {
   return paragraphs;
 };
 
-// Function to generate a Word document
 export const generateWordDocument = async (options: DocumentOptions): Promise<Blob> => {
   try {
     const markdown = convertToMarkdown(options.sections);
@@ -206,7 +124,6 @@ export const generateWordDocument = async (options: DocumentOptions): Promise<Bl
   }
 };
 
-// Function to generate a PDF document
 export const generatePdfDocument = async (
   metadata: DocumentMetadata,
   sections: ResearchSection[],
@@ -215,18 +132,86 @@ export const generatePdfDocument = async (
   try {
     const markdown = convertToMarkdown(sections);
     const pdf = await PDFDocument.create();
-    const page = pdf.addPage();
-    const { width, height } = page.getSize();
+    let currentPage = pdf.addPage();
+    const { width, height } = currentPage.getSize();
     const fontSize = 12;
+    const titleSize = 18;
+    const headerSize = 14;
+    let currentY = height - 50;
 
-    const content = `# ${metadata.title}\n\nAuthor: ${metadata.author}\n\n${markdown}\n\n# References\n\n${references.join('\n')}`;
-    
-    page.drawText(content, {
+    // Draw title
+    currentPage.drawText(metadata.title, {
       x: 50,
-      y: height - 50,
+      y: currentY,
+      size: titleSize,
+      maxWidth: width - 100,
+    });
+    currentY -= 30;
+
+    // Draw author
+    currentPage.drawText(`Author: ${metadata.author}`, {
+      x: 50,
+      y: currentY,
       size: fontSize,
       maxWidth: width - 100,
     });
+    currentY -= 40;
+
+    // Draw content
+    const lines = markdown.split('\n');
+    for (const line of lines) {
+      if (line.trim()) {
+        const isMainSection = line.match(/^\d+\.\s+/);
+        const isSubSection = line.match(/^[a-z]\.\s+/);
+        const lineSize = isMainSection ? headerSize : (isSubSection ? fontSize + 1 : fontSize);
+        const xOffset = isSubSection ? 70 : 50;
+
+        if (currentY < 50) {
+          currentPage = pdf.addPage();
+          currentY = height - 50;
+        }
+
+        currentPage.drawText(line, {
+          x: xOffset,
+          y: currentY,
+          size: lineSize,
+          maxWidth: width - (xOffset + 50),
+        });
+        currentY -= 20;
+      }
+    }
+
+    // Draw references
+    if (references.length > 0) {
+      if (currentY < 100) {
+        currentPage = pdf.addPage();
+        currentY = height - 50;
+      }
+
+      currentY -= 20;
+      currentPage.drawText('References', {
+        x: 50,
+        y: currentY,
+        size: headerSize,
+        maxWidth: width - 100,
+      });
+      currentY -= 30;
+
+      for (const ref of references) {
+        if (currentY < 50) {
+          currentPage = pdf.addPage();
+          currentY = height - 50;
+        }
+
+        currentPage.drawText(ref, {
+          x: 50,
+          y: currentY,
+          size: fontSize,
+          maxWidth: width - 100,
+        });
+        currentY -= 20;
+      }
+    }
 
     const pdfBytes = await pdf.save();
     return new Blob([pdfBytes], { type: 'application/pdf' });
@@ -236,8 +221,7 @@ export const generatePdfDocument = async (
   }
 };
 
-// Function to download a document
-export const downloadDocument = (blob: Blob, filename: string) => {
+export const downloadDocument = (blob: Blob, filename: string): void => {
   try {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -248,10 +232,7 @@ export const downloadDocument = (blob: Blob, filename: string) => {
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   } catch (error) {
-    throw new ResearchException(
-      ResearchError.GENERATION_ERROR,
-      'Error downloading document',
-      { error }
-    );
+    console.error('Error downloading document:', error);
+    throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to download document');
   }
 };
