@@ -69,7 +69,6 @@ const ResearchPage = () => {
   })
   const [outlineOpen, setOutlineOpen] = useState(false)
   const [outline, setOutline] = useState('')
-  const [canExport, setCanExport] = useState(false)
 
   const updateProgress = (progress: number, total: number, message: string) => {
     setProgressState({
@@ -104,7 +103,6 @@ const ResearchPage = () => {
     try {
       const generatedTitle = await generateTitle(query)
       dispatch(setTitle(generatedTitle))
-      setCanExport(false)
     } catch (error) {
       if (error instanceof ResearchException) {
         dispatch(setError(error.message))
