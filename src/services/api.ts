@@ -323,7 +323,7 @@ export async function searchPapers(searchQuery: string): Promise<any[]> {
 };
 
 export const generateReferences = async (topic: string): Promise<string[]> => {
-  const systemPrompt = 'You are a research reference generator. Generate academic references for the given research topic.';
+  const systemPrompt = 'You are a research reference generator. Generate academic use post graduate language references for the given research topic.';
   const prompt = `Generate a list of academic references for research about: ${topic}`;
 
   try {
@@ -432,7 +432,8 @@ export const generateDetailedOutline = async (topic: string, mode: string = 'art
 2. Must start with abstract and end with conclusion
 3. Focus on synthesis and research gaps
 4. Format with main sections (1., 2., etc.)
-5. Each section must be unique and based on the topic`;
+5. Each section must be unique and based on the topic
+6. Make it technical at a post graduate level`;
         break;
         
       case 'basic-general':
@@ -441,16 +442,18 @@ export const generateDetailedOutline = async (topic: string, mode: string = 'art
 2. Must start with abstract and end with conclusion
 3. Flexible structure for topic exploration
 4. Format with main sections (1., 2., etc.)
-5. Each section must be unique and focused on the topic`;
+5. Each section must be unique and focused on the topic
+6. Make it technical at a post graduate level`;
         break;
         
       case 'basic-experimental':
         prompt += `Create a basic experimental design outline with:
 1. 9-15 main sections
-2. Must start with abstract and end with conclusion
-3. Focus on experimental methodology
+2. Must start with abstract and end with summary
+3. Focus on using a hypothisis to design an experimental methodology 
 4. Format with main sections (1., 2., etc.)
-5. Each section must be unique and methodologically sound`;
+5. Each section must be unique and methodologically sound
+6. Make it technical at a post graduate level`;
         break;
         
       case 'advanced-literature':
@@ -460,7 +463,8 @@ export const generateDetailedOutline = async (topic: string, mode: string = 'art
 3. Must start with abstract and end with conclusion
 4. Deep analysis of research synthesis and gaps
 5. Format with main sections (1., 2., etc.) and subsections (a., b., etc.)
-6. Each section and subsection must be unique and comprehensive`;
+6. Each section and subsection must be unique and comprehensive
+7. Make it technical at a post graduate level`;
         break;
         
       case 'advanced-general':
@@ -470,18 +474,20 @@ export const generateDetailedOutline = async (topic: string, mode: string = 'art
 3. Must start with abstract and end with conclusion
 4. In-depth exploration of all topic aspects
 5. Format with main sections (1., 2., etc.) and subsections (a., b., etc.)
-6. Each section and subsection must be unique and detailed`;
+6. Each section and subsection must be unique and detailed
+7. Make it technical at a post graduate level`;
         break;
         
       case 'advanced-experimental':
         prompt += `Create an advanced experimental design outline with:
 1. 12-24 main sections
 2. 3-6 subsections per main section
-3. Must start with abstract and end with conclusion
+3. Must start with abstract and end with summary
 4. Start with a clear hypothesis about: ${topic}
 5. Design a comprehensive experiment to prove the hypothesis
 6. Format with main sections (1., 2., etc.) and subsections (a., b., etc.)
-7. Each section and subsection must be unique and methodologically rigorous`;
+7. Each section and subsection must be unique and methodologically rigorous
+8. Make it technical at a post graduate level`;
         break;
     }
 

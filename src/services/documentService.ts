@@ -1,14 +1,19 @@
-import { Document, Paragraph, TextRun, HeadingLevel, TableOfContents, Packer, AlignmentType } from 'docx';
-import { ResearchSection } from '../store/slices/researchSlice';
-import { ResearchError, ResearchException } from './researchErrors';
-import pdfMake from 'pdfmake/build/pdfmake';
-import { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
-import 'pdfmake/build/vfs_fonts';
+import { Document, Paragraph, Packer, HeadingLevel, AlignmentType } from 'docx';
+import { PDFDocument } from 'pdf-lib';
+import { ResearchException, ResearchError } from '../utils/exceptions';
+import { Section as ResearchSection } from '../types/research';
 
 export interface DocumentMetadata {
   title: string;
   author: string;
   created: Date;
+}
+
+export interface DocumentOptions {
+  title: string;
+  author: string;
+  sections: ResearchSection[];
+  references: string[];
 }
 
 // Helper functions for Word document generation
@@ -107,46 +112,97 @@ const generateReferences = (references: string[]): Paragraph[] => {
   return paragraphs;
 };
 
-// Function to generate a Word document
-export const generateWordDocument = async (options: {
-  title: string;
-  author: string;
-  sections: ResearchSection[];
-  references: string[];
-}): Promise<Blob> => {
-  try {
-    const metadata: DocumentMetadata = {
-      title: options.title,
-      author: options.author,
-      created: new Date()
-    };
+const convertToMarkdown = (sections: ResearchSection[]): string => {
+  let markdown = '';
+  sections.forEach(section => {
+    if (section.title) {
+      markdown += `# ${section.title}\n\n`;
+    }
+    if (section.content) {
+      markdown += `${section.content}\n\n`;
+    }
+    if (section.subsections && section.subsections.length > 0) {
+      section.subsections.forEach(subsection => {
+        if (subsection.title) {
+          markdown += `## ${subsection.title}\n\n`;
+        }
+        if (subsection.content) {
+          markdown += `${subsection.content}\n\n`;
+        }
+      });
+    }
+  });
+  return markdown;
+};
 
+const parseMarkdownToDocx = (markdown: string): Paragraph[] => {
+  const paragraphs: Paragraph[] = [];
+  const lines = markdown.split('\n');
+  lines.forEach(line => {
+    if (line.startsWith('# ')) {
+      paragraphs.push(
+        new Paragraph({
+          text: line.substring(2),
+          heading: HeadingLevel.HEADING_2,
+          alignment: AlignmentType.LEFT,
+        })
+      );
+    } else if (line.startsWith('## ')) {
+      paragraphs.push(
+        new Paragraph({
+          text: line.substring(3),
+          heading: HeadingLevel.HEADING_3,
+          alignment: AlignmentType.LEFT,
+        })
+      );
+    } else {
+      paragraphs.push(
+        new Paragraph({
+          text: line,
+          alignment: AlignmentType.JUSTIFIED,
+        })
+      );
+    }
+  });
+  return paragraphs;
+};
+
+// Function to generate a Word document
+export const generateWordDocument = async (options: DocumentOptions): Promise<Blob> => {
+  try {
+    const markdown = convertToMarkdown(options.sections);
     const doc = new Document({
       sections: [{
-        properties: {
-          type: 'continuous'
-        },
+        properties: {},
         children: [
-          ...generateTitle(metadata),
-          new TableOfContents('Table of Contents'),
-          ...generateHeader(''),
-          ...generateSections(options.sections),
-          ...generateReferences(options.references)
-        ]
-      }]
+          new Paragraph({
+            text: options.title,
+            heading: HeadingLevel.TITLE,
+            spacing: { after: 400 }
+          }),
+          new Paragraph({
+            text: `Author: ${options.author}`,
+            spacing: { after: 400 }
+          }),
+          ...parseMarkdownToDocx(markdown),
+          new Paragraph({
+            text: 'References',
+            heading: HeadingLevel.HEADING_1,
+            spacing: { before: 400, after: 200 }
+          }),
+          ...options.references.map(ref => new Paragraph({
+            text: ref,
+            spacing: { after: 200 }
+          }))
+        ],
+      }],
     });
 
-    const blob = await Packer.toBlob(doc);
-    if (!blob) {
-      throw new Error('Failed to generate Word document blob');
-    }
-    return blob;
+    const buffer = await Packer.toBlob(doc);
+    return buffer;
   } catch (error) {
-    throw new ResearchException(
-      ResearchError.GENERATION_ERROR,
-      'Error generating Word document',
-      { error }
-    );
+    console.error('Error generating Word document:', error);
+    throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate Word document');
   }
 };
 
@@ -157,150 +213,26 @@ export const generatePdfDocument = async (
   references: string[]
 ): Promise<Blob> => {
   try {
-    const content: Content[] = [
-      {
-        text: metadata.title,
-        style: 'title',
-        alignment: 'center'
-      },
-      {
-        text: `By ${metadata.author}`,
-        style: 'author',
-        alignment: 'center',
-        margin: [0, 0, 0, 20]
-      },
-      {
-        text: metadata.created.toLocaleDateString(),
-        style: 'date',
-        alignment: 'center',
-        margin: [0, 0, 0, 30]
-      },
-      {
-        toc: {
-          title: { text: 'Table of Contents', style: 'tocTitle' }
-        }
-      }
-    ];
+    const markdown = convertToMarkdown(sections);
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage();
+    const { width, height } = page.getSize();
+    const fontSize = 12;
 
-    // Add sections
-    sections.forEach(section => {
-      content.push(
-        {
-          text: section.title,
-          style: 'sectionHeader',
-          pageBreak: 'before'
-        },
-        {
-          text: section.content,
-          style: 'sectionContent'
-        }
-      );
-
-      if (section.subsections) {
-        section.subsections.forEach(subsection => {
-          content.push(
-            {
-              text: subsection.title,
-              style: 'subsectionHeader'
-            },
-            {
-              text: subsection.content,
-              style: 'subsectionContent'
-            }
-          );
-        });
-      }
+    const content = `# ${metadata.title}\n\nAuthor: ${metadata.author}\n\n${markdown}\n\n# References\n\n${references.join('\n')}`;
+    
+    page.drawText(content, {
+      x: 50,
+      y: height - 50,
+      size: fontSize,
+      maxWidth: width - 100,
     });
 
-    // Add references
-    if (references.length > 0) {
-      content.push(
-        {
-          text: 'References',
-          style: 'sectionHeader',
-          pageBreak: 'before'
-        },
-        {
-          ul: references.map(ref => ({
-            text: ref,
-            style: 'reference'
-          }))
-        }
-      );
-    }
-
-    const docDefinition: TDocumentDefinitions = {
-      content,
-      styles: {
-        title: {
-          fontSize: 24,
-          bold: true,
-          margin: [0, 0, 0, 10]
-        },
-        author: {
-          fontSize: 14,
-          italics: true
-        },
-        date: {
-          fontSize: 12
-        },
-        tocTitle: {
-          fontSize: 20,
-          bold: true,
-          margin: [0, 0, 0, 20]
-        },
-        sectionHeader: {
-          fontSize: 16,
-          bold: true,
-          margin: [0, 20, 0, 10]
-        },
-        sectionContent: {
-          fontSize: 12,
-          margin: [0, 0, 0, 10]
-        },
-        subsectionHeader: {
-          fontSize: 14,
-          bold: true,
-          margin: [0, 10, 0, 5]
-        },
-        subsectionContent: {
-          fontSize: 12,
-          margin: [0, 0, 0, 10]
-        },
-        reference: {
-          fontSize: 12,
-          margin: [0, 5, 0, 5]
-        }
-      },
-      defaultStyle: {
-        font: 'Helvetica'
-      }
-    };
-
-    return new Promise((resolve, reject) => {
-      try {
-        const pdfDocGenerator = pdfMake.createPdf(docDefinition);
-        pdfDocGenerator.getBlob((blob) => {
-          if (!blob) {
-            reject(new Error('Failed to generate PDF blob'));
-          } else {
-            resolve(blob);
-          }
-        });
-      } catch (error) {
-        reject(new ResearchException(
-          ResearchError.GENERATION_ERROR,
-          'Error generating PDF document',
-          { error }
-        ));
-      }
-    });
+    const pdfBytes = await pdf.save();
+    return new Blob([pdfBytes], { type: 'application/pdf' });
   } catch (error) {
-    throw new ResearchException(
-      ResearchError.GENERATION_ERROR,
-      'Error generating PDF document',
-      { error }
-    );
+    console.error('Error generating PDF document:', error);
+    throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate PDF document');
   }
 };
 
