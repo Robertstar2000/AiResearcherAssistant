@@ -42,7 +42,7 @@ import { generateTitle } from '../services/api';
 import { generateResearch } from '../services/researchService';
 import { generatePdfDocument, generateWordDocument, downloadDocument } from '../services/documentService';
 import { initializeRealtimeSubscription } from '../services/databaseService';
-import { ResearchError, ResearchException } from '../services/researchErrors';
+import { ResearchException } from '../services/researchErrors';
 import EditIcon from '@mui/icons-material/Edit';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
