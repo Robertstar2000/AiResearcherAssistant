@@ -37,12 +37,16 @@ export const initializeAuth = async (callback?: () => void): Promise<() => void>
   try {
     // Get session from storage
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    console.log('Session check result:', session ? 'Session found' : 'No session found');
+    
     if (sessionError) {
+      console.error('Session error:', sessionError);
       throw new ResearchException(ResearchError.AUTH_ERROR, 'Failed to get session');
     }
 
     // Set initial user state
     if (session?.user) {
+      console.log('Restoring user session for:', session.user.email);
       const metadata: UserMetadata = {
         name: session.user.user_metadata.name,
         occupation: session.user.user_metadata.occupation,
@@ -55,6 +59,7 @@ export const initializeAuth = async (callback?: () => void): Promise<() => void>
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event: AuthChangeEvent, session: Session | null) => {
         try {
+          console.log('Auth state changed:', event, session ? 'Session exists' : 'No session');
           if (event === 'SIGNED_IN' && session?.user) {
             const metadata: UserMetadata = {
               name: session.user.user_metadata.name,
@@ -62,8 +67,10 @@ export const initializeAuth = async (callback?: () => void): Promise<() => void>
               geolocation: session.user.user_metadata.geolocation
             };
             store.dispatch(setUser(createAuthUser(session.user, metadata)));
+            console.log('User signed in:', session.user.email);
           } else if (event === 'SIGNED_OUT') {
             store.dispatch(logout());
+            console.log('User signed out');
           }
         } catch (error) {
           console.error('Error handling auth state change:', error);
@@ -76,8 +83,11 @@ export const initializeAuth = async (callback?: () => void): Promise<() => void>
       callback();
     }
 
+    console.log('Auth initialization completed');
+    
     // Return cleanup function
     return () => {
+      console.log('Cleaning up auth subscription');
       subscription.unsubscribe();
     };
   } catch (error) {

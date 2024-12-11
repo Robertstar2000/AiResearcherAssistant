@@ -11,10 +11,15 @@ import ErrorBoundary from './components/ErrorBoundary'
 
 function App() {
   useEffect(() => {
-    // Initialize auth on mount
-    console.log('Initializing auth...')
+    console.log('Starting auth initialization...');
     initializeAuth()
-  }, [])
+      .then(() => {
+        console.log('Auth initialization completed successfully');
+      })
+      .catch((error) => {
+        console.error('Auth initialization failed:', error);
+      });
+  }, []);
 
   return (
     <ErrorBoundary>
