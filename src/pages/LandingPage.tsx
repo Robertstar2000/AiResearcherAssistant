@@ -31,7 +31,9 @@ const features: Feature[] = [
     description: 'Choose between Basic mode for clear, accessible explanations, or Advanced mode for comprehensive technical analysis.',
     details: [
       'Basic: Clear, focused explanations of core concepts',
-      'Advanced: In-depth technical analysis and detailed methodology'
+      'Advanced: In-depth technical analysis and detailed methodology',
+      'Uses Semantic Scholar for review of existing research and citation management',
+      'Automatically generates title page and table of contents for Word and PDF exports'
     ]
   },
   {

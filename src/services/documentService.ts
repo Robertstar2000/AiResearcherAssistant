@@ -1,4 +1,4 @@
-import { Document, Paragraph, Packer, HeadingLevel } from 'docx';
+import { Document, Paragraph, Packer, HeadingLevel, AlignmentType } from 'docx';
 import { PDFDocument } from 'pdf-lib';
 import { ResearchSection, SubSection } from '../types';
 
@@ -93,15 +93,42 @@ export const generateWordDocument = async (options: DocumentOptions): Promise<Bl
       sections: [{
         properties: {},
         children: [
+          // Title Page
           new Paragraph({
             text: options.title,
             heading: HeadingLevel.TITLE,
-            spacing: { after: 400 }
+            spacing: { after: 400 },
+            alignment: AlignmentType.CENTER
           }),
           new Paragraph({
-            text: `Author: ${options.author}`,
+            text: `By ${options.author}`,
+            spacing: { after: 200 },
+            alignment: AlignmentType.CENTER
+          }),
+          new Paragraph({
+            text: new Date().toLocaleDateString(),
+            spacing: { after: 800 },
+            alignment: AlignmentType.CENTER
+          }),
+          // Table of Contents
+          new Paragraph({
+            text: 'Table of Contents',
+            heading: HeadingLevel.HEADING_1,
+            spacing: { before: 400, after: 200 }
+          }),
+          ...options.sections.map((section, index) => 
+            new Paragraph({
+              text: `${index + 1}. ${section.title}`,
+              spacing: { after: 100 },
+              tabStops: [{ type: 'right', position: 5500 }],
+              style: 'tableOfContents'
+            })
+          ),
+          new Paragraph({
+            text: '',
             spacing: { after: 400 }
           }),
+          // Content
           ...parseMarkdownToDocx(markdown),
           new Paragraph({
             text: 'References',
@@ -132,30 +159,79 @@ export const generatePdfDocument = async (
   try {
     const markdown = convertToMarkdown(sections);
     const pdf = await PDFDocument.create();
+    
+    // Title Page
     let currentPage = pdf.addPage();
     const { width, height } = currentPage.getSize();
     const fontSize = 12;
-    const titleSize = 18;
+    const titleSize = 24;
     const headerSize = 14;
-    let currentY = height - 50;
+    let currentY = height - 200; // Start lower for title page
 
-    // Draw title
+    // Draw title centered
+    const titleWidth = titleSize * metadata.title.length * 0.6; // Approximate width
     currentPage.drawText(metadata.title, {
-      x: 50,
+      x: (width - titleWidth) / 2,
       y: currentY,
       size: titleSize,
-      maxWidth: width - 100,
+      maxWidth: width - 100
+    });
+    currentY -= 50;
+
+    // Draw author centered
+    const authorText = `By ${metadata.author}`;
+    const authorWidth = (fontSize + 2) * authorText.length * 0.6;
+    currentPage.drawText(authorText, {
+      x: (width - authorWidth) / 2,
+      y: currentY,
+      size: fontSize + 2,
+      maxWidth: width - 100
     });
     currentY -= 30;
 
-    // Draw author
-    currentPage.drawText(`Author: ${metadata.author}`, {
-      x: 50,
+    // Draw date centered
+    const dateText = metadata.created.toLocaleDateString();
+    const dateWidth = fontSize * dateText.length * 0.6;
+    currentPage.drawText(dateText, {
+      x: (width - dateWidth) / 2,
       y: currentY,
       size: fontSize,
-      maxWidth: width - 100,
+      maxWidth: width - 100
+    });
+
+    // Table of Contents Page
+    currentPage = pdf.addPage();
+    currentY = height - 50;
+
+    // Draw Table of Contents header
+    currentPage.drawText('Table of Contents', {
+      x: 50,
+      y: currentY,
+      size: headerSize + 2,
+      maxWidth: width - 100
     });
     currentY -= 40;
+
+    // Draw table of contents entries
+    sections.forEach((section, index) => {
+      if (currentY < 50) {
+        currentPage = pdf.addPage();
+        currentY = height - 50;
+      }
+
+      currentPage.drawText(`${index + 1}. ${section.title}`, {
+        x: 70,
+        y: currentY,
+        size: fontSize,
+        maxWidth: width - 140
+      });
+      currentY -= 25;
+    });
+    currentY -= 20;
+
+    // Content pages
+    currentPage = pdf.addPage();
+    currentY = height - 50;
 
     // Draw content
     const lines = markdown.split('\n');
@@ -204,10 +280,10 @@ export const generatePdfDocument = async (
         }
 
         currentPage.drawText(ref, {
-          x: 50,
+          x: 70,
           y: currentY,
           size: fontSize,
-          maxWidth: width - 100,
+          maxWidth: width - 140,
         });
         currentY -= 20;
       }
