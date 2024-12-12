@@ -58,6 +58,9 @@ export default function ResearchPage() {
     progress: 0,
     message: '',
   });
+  const [showOutline, setShowOutline] = useState(false);
+  const [outlineWordCount, setOutlineWordCount] = useState(0);
+  const [parsedOutline, setParsedOutline] = useState<any[]>([]);
 
   const handleModeChange = (e: SelectChangeEvent<string>) => {
     dispatch(setMode(e.target.value as ResearchMode));
@@ -89,14 +92,67 @@ export default function ResearchPage() {
     }
 
     setIsGenerating(true);
+    setShowOutline(false);
     dispatch(setError(null));
     setProgressState({ progress: 0, message: 'Starting research generation...' });
 
     try {
-      // Step 1: Generate outline based on research settings
+      // Generate outline based on research settings and combined prompts
       setProgressState({ progress: 10, message: 'Generating outline...' });
+      
+      // Combine all available context for the outline generation
+      const getSectionRecommendations = (mode: string) => {
+        switch (mode.toLowerCase()) {
+          case 'article':
+            return `
+Recommended Section Structure:
+- 8 main sections: Abstract, Introduction, Literature Review, Methodology, Results, Discussion, Conclusion, References
+- Each main section should have 3-4 subsections
+- Total expected sections: ~30 (8 main + ~22 subsections)`;
+          case 'literature review':
+            return `
+Recommended Section Structure:
+- 6 main sections: Introduction, Review Methodology, Literature Analysis, Findings Synthesis, Discussion, Conclusion
+- Each main section should have 3 subsections
+- Total expected sections: ~24 (6 main + ~18 subsections)`;
+          case 'technical':
+            return `
+Recommended Section Structure:
+- 7 main sections: Abstract, Introduction, Background, Methodology, Implementation, Results, Conclusion
+- Each main section should have 2-3 subsections
+- Total expected sections: ~25 (7 main + ~18 subsections)`;
+          default:
+            return `
+Recommended Section Structure:
+- 5-7 main sections
+- Each main section should have 2-3 subsections
+- Total expected sections: ~20-25 sections`;
+        }
+      };
+
+      const combinedPrompt = `Research Topic: ${query}
+Research Target: ${research.title}
+Research Mode: ${research.mode}
+Research Type: ${research.type}
+
+Additional Context:
+- This is a ${research.mode.toLowerCase()} research paper
+- The research type is ${research.type.toLowerCase()}
+- The target audience should match the research mode and type
+- The structure should follow academic standards for this type of research
+
+${getSectionRecommendations(research.mode)}
+
+Requirements:
+- Create a clear, hierarchical structure
+- Use numbers for main sections (1., 2., etc.)
+- Use letters for subsections (a., b., etc.)
+- Include brief descriptions of what each section should cover
+- Ensure the outline supports the research target
+- Maintain logical flow between sections`;
+
       const outline = await generateDetailedOutline(
-        research.title,
+        combinedPrompt,
         research.mode.toLowerCase(),
         research.type.toLowerCase()
       );
@@ -105,11 +161,13 @@ export default function ResearchPage() {
         throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate outline');
       }
 
-      // Step 2: Parse outline into sections
+      // Parse outline into sections
       setProgressState({ progress: 30, message: 'Processing outline...' });
       const outlineItems = parseDetailedOutline(outline);
+      setParsedOutline(outlineItems);
+      setOutlineWordCount(calculateOutlineWordCount(outlineItems));
       
-      // Step 3: Generate content for each section
+      // Generate content for each section
       let sections: any[] = [];
       let totalSections = outlineItems.length;
       
@@ -199,6 +257,20 @@ export default function ResearchPage() {
     setEditingTitle(false)
     setEditedTitle('')
   }
+
+  const countWords = (text: string): number => {
+    return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+  };
+
+  const calculateOutlineWordCount = (outlineItems: any[]): number => {
+    return outlineItems.reduce((total, item) => {
+      return total + countWords(item.title);
+    }, 0);
+  };
+
+  const handleShowOutline = () => {
+    setShowOutline(true);
+  };
 
   const renderProgress = () => {
     if (!isGenerating) return null;
@@ -414,8 +486,40 @@ export default function ResearchPage() {
                   >
                     {isGenerating ? 'Generating Research...' : 'Generate Research'}
                   </Button>
+                  {parsedOutline.length > 0 && !showOutline && (
+                    <Button
+                      variant="outlined"
+                      color="primary"
+                      onClick={handleShowOutline}
+                      disabled={isGenerating}
+                    >
+                      Show Outline
+                    </Button>
+                  )}
                   {exportButtons}
                 </Box>
+              </Box>
+            )}
+
+            {showOutline && parsedOutline.length > 0 && (
+              <Box sx={{ mt: 4 }}>
+                <Typography variant="h6" gutterBottom>
+                  Research Outline
+                </Typography>
+                <Paper elevation={0} sx={{ p: 2, bgcolor: 'grey.50' }}>
+                  {parsedOutline.map((item, index) => (
+                    <Box key={index} sx={{ ml: item.isSubsection ? 4 : 0, mb: 1 }}>
+                      <Typography>
+                        {item.isSubsection ? '•' : `${index + 1}.`} {item.title}
+                      </Typography>
+                    </Box>
+                  ))}
+                  <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'grey.300' }}>
+                    <Typography variant="body2" color="textSecondary">
+                      Total word count in outline: {outlineWordCount}
+                    </Typography>
+                  </Box>
+                </Paper>
               </Box>
             )}
 
