@@ -26,7 +26,6 @@ interface ResearchResult {
 export function parseDetailedOutline(outline: string): OutlineItem[] {
   const lines = outline.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   const items: OutlineItem[] = [];
-  let currentMainSection: OutlineItem | null = null;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -47,7 +46,6 @@ export function parseDetailedOutline(outline: string): OutlineItem[] {
       
       // Look for description in the next lines
       let description = '';
-      let nextLine = i + 1 < lines.length ? lines[i + 1] : '';
       
       // Keep looking for description until we find another section or end
       while (i + 1 < lines.length && 
@@ -56,7 +54,6 @@ export function parseDetailedOutline(outline: string): OutlineItem[] {
              lines[i + 1].trim().length > 0) {
         description += (description ? ' ' : '') + lines[i + 1].trim();
         i++;
-        nextLine = i + 1 < lines.length ? lines[i + 1] : '';
       }
 
       const item: OutlineItem = {
@@ -66,10 +63,6 @@ export function parseDetailedOutline(outline: string): OutlineItem[] {
         isSubsection,
         description: description || '[Description to be added]' // Ensure every section has a description
       };
-
-      if (!isSubsection) {
-        currentMainSection = item;
-      }
 
       items.push(item);
     }
