@@ -388,11 +388,12 @@ export const generateOutline = async (topic: string): Promise<string> => {
   const systemPrompt = 'You are a research outline generator. Generate a detailed outline for the given research topic.';
   const prompt = `Generate a detailed outline for research about: ${topic}
 
-Please format the outline with:
-1. Main sections numbered (1., 2., etc.)
-2. Subsections lettered (a., b., etc.)
-3. Include brief descriptions of what each section will cover
-4. Ensure logical flow and progression of ideas
+Compress the outline instructions into the least tokens that captures the essence of the outline  
+Format the outline with:
+1. Main sections  (1., 2., etc.)
+2. Subsections  (a., b., etc.)
+3. Include brief descriptions what each section covers
+4. Ensure logical flow & progression of ideas
 5. Include standard research paper sections (Introduction, Methodology, Results, Discussion, Conclusion)`;
 
   try {
@@ -424,12 +425,12 @@ export const generateDetailedOutline = async (topic: string): Promise<string> =>
   switch (modeType) {
     case 'basic-literature':
     case 'basic-general':
-      minSections = 6;
+      minSections = 7;
       maxSections = 12;
       break;
-    case 'basic-experimental':
+    case 'basic-experimental':  
       minSections = 9;
-      maxSections = 15;
+      maxSections = 12;
       requiresHypothesis = true;
       endSection = 'summary';
       break;
@@ -440,7 +441,7 @@ export const generateDetailedOutline = async (topic: string): Promise<string> =>
       break;
     case 'advanced-experimental':
       minSections = 12;
-      maxSections = 24;
+      maxSections = 18;
       requiresHypothesis = true;
       endSection = 'summary';
       break;
@@ -451,14 +452,14 @@ export const generateDetailedOutline = async (topic: string): Promise<string> =>
 
   const targetSections = Math.floor((minSections + maxSections) / 2);
 
-  const systemPrompt = `You are a research outline generator. Create a detailed outline for academic research that meets these requirements:
+  const systemPrompt = `You are a research outline generator. Create a outline with a title and compressed cripitic prompt to generate academic research that meets these requirements:
 1. Generate EXACTLY ${targetSections} main sections (no more, no less)
 2. Start with abstract
 3. End with ${endSection}
 ${requiresHypothesis ? '4. Include a clear hypothesis section\n5. Include methodology and experimental design sections' : '4. Include appropriate sections for literature review and analysis'}
 5. Each section must be numbered (1., 2., etc.)
 6. Make it technical at a post-graduate level
-7. Sections must be unique and focused on the topic`;
+7. Sections must be unique and focused on the topic provide compressed, criptic prompt for each section `;
 
   const prompt = `Generate a detailed research outline for: ${topic}
 
@@ -469,7 +470,7 @@ Requirements:
 - End with ${endSection}
 ${requiresHypothesis ? '- Include hypothesis, methodology, and experimental design\n' : ''}
 - Post-graduate academic level
-- Sections must be unique and comprehensive`;
+- Sections must be unique and comprehensive and verbose`;
 
   try {
     const response = await makeApiCall(
