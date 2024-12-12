@@ -49,6 +49,7 @@ export default function ResearchPage() {
   const dispatch = useDispatch();
   const research = useSelector((state: RootState) => state.research);
   const [query, setQuery] = useState('');
+  const [isGeneratingTarget, setIsGeneratingTarget] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -66,21 +67,36 @@ export default function ResearchPage() {
     dispatch(setType(e.target.value as ResearchType));
   };
 
+  const handleGenerateTarget = async () => {
+    setIsGeneratingTarget(true);
+    dispatch(setError(null));
+
+    try {
+      const researchTarget = await generateTitle(query);
+      dispatch(setTitle(researchTarget));
+    } catch (error) {
+      console.error('Error generating research target:', error);
+      dispatch(setError(error instanceof Error ? error.message : 'Failed to generate research target'));
+    } finally {
+      setIsGeneratingTarget(false);
+    }
+  };
+
   const handleGenerateResearch = async () => {
+    if (!research.title) {
+      dispatch(setError('Please generate a research target first'));
+      return;
+    }
+
     setIsGenerating(true);
     dispatch(setError(null));
     setProgressState({ progress: 0, message: 'Starting research generation...' });
 
     try {
-      // Step 1: Generate research target
-      setProgressState({ progress: 5, message: 'Generating research target...' });
-      const researchTarget = await generateTitle(query);
-      dispatch(setTitle(researchTarget));
-
-      // Step 2: Generate outline based on research settings
+      // Step 1: Generate outline based on research settings
       setProgressState({ progress: 10, message: 'Generating outline...' });
       const outline = await generateDetailedOutline(
-        query,
+        research.title,
         research.mode.toLowerCase(),
         research.type.toLowerCase()
       );
@@ -89,15 +105,15 @@ export default function ResearchPage() {
         throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate outline');
       }
 
-      // Step 3: Parse outline into sections
+      // Step 2: Parse outline into sections
       setProgressState({ progress: 30, message: 'Processing outline...' });
       const outlineItems = parseDetailedOutline(outline);
       
-      // Step 4: Generate content for each section
+      // Step 3: Generate content for each section
       let sections: any[] = [];
       let totalSections = outlineItems.length;
       
-      for (let i = 0; i <outlineItems.length; i++) {
+      for (let i = 0; i < outlineItems.length; i++) {
         const item = outlineItems[i];
         setProgressState({
           progress: 30 + Math.floor((i / totalSections) * 60),
@@ -105,7 +121,7 @@ export default function ResearchPage() {
         });
 
         const section = await generateSection(
-          query,
+          research.title,
           item.title,
           item.isSubsection
         );
@@ -113,7 +129,7 @@ export default function ResearchPage() {
         sections.push(section);
       }
 
-      // Step 5: Update store with generated content
+      // Step 4: Update store with generated content
       setProgressState({ progress: 90, message: 'Finalizing research...' });
       dispatch(setSections(sections));
 
@@ -321,27 +337,25 @@ export default function ResearchPage() {
                   placeholder="Enter your research topic"
                   fullWidth
                   variant="outlined"
-                  disabled={isGenerating}
+                  disabled={isGenerating || isGeneratingTarget}
                 />
               </FormControl>
               <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
                 <Button
                   variant="contained"
-                  onClick={handleGenerateResearch}
-                  disabled={isGenerating || !query.trim()}
+                  color="primary"
+                  onClick={handleGenerateTarget}
+                  disabled={!query || isGenerating || isGeneratingTarget}
                 >
-                  Generate Research
+                  {isGeneratingTarget ? 'Generating Target...' : 'Generate Target'}
                 </Button>
-                {exportButtons}
               </Box>
             </Box>
-
-            {renderProgress()}
 
             {research.title && (
               <Box sx={{ mb: 4 }}>
                 <Typography variant="h6" gutterBottom>
-                  Target for Research:
+                  Research Target
                 </Typography>
                 {editingTitle ? (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -388,6 +402,24 @@ export default function ResearchPage() {
                 )}
               </Box>
             )}
+
+            {research.title && (
+              <Box sx={{ mb: 4 }}>
+                <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleGenerateResearch}
+                    disabled={isGenerating}
+                  >
+                    {isGenerating ? 'Generating Research...' : 'Generate Research'}
+                  </Button>
+                  {exportButtons}
+                </Box>
+              </Box>
+            )}
+
+            {renderProgress()}
           </Paper>
         </Grid>
       </Grid>
