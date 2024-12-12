@@ -1,13 +1,12 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
 export enum ResearchMode {
-  Article = 'article',
   Basic = 'basic',
-  Advanced = 'advanced'
+  Advanced = 'advanced',
+  Article = 'article'
 }
 
 export enum ResearchType {
-  Article = 'article',
   General = 'general',
   Literature = 'literature',
   Experiment = 'experiment'
@@ -50,7 +49,7 @@ interface ResearchState {
 const initialState: ResearchState = {
   title: '',
   mode: ResearchMode.Basic,
-  type: ResearchType.Article,
+  type: ResearchType.General,
   citationStyle: CitationStyle.APA,
   sections: [],
   references: [],

@@ -1,36 +1,70 @@
 import { generateDetailedOutline, generateSection, generateReferences } from './api';
 import { ResearchError, ResearchException } from './researchErrors';
+import { ResearchMode, ResearchType } from '../store/slices/researchSlice';
 
 interface OutlineItem {
-  number: string;
   title: string;
-  requirements: string[];
+  level: number;
+  number: string;
   isSubsection: boolean;
+  description?: string;
+}
+
+interface ResearchSection {
+  title: string;
+  content: string;
+  number: string;
+  warning?: string;
 }
 
 interface ResearchResult {
-  sections: any[];
+  sections: ResearchSection[];
   references: string[];
   outline: string;
 }
 
-// Convert API sections to ResearchSections
-const convertToResearchSections = (sections: any[]): any[] => {
-  return sections.map((section, index) => ({
-    number: section.number || `${index + 1}`,
-    title: section.title,
-    content: section.content,
-    subsections: section.subsections ? convertToResearchSections(section.subsections) : undefined,
-    warning: section.warning,
-  }));
-};
+export function parseDetailedOutline(outline: string): OutlineItem[] {
+  const lines = outline.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  const items: OutlineItem[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const numberMatch = line.match(/^(\d+\.|[a-z]\.|[A-Z]\.|\d+\)|\-|\*)\s*/);
+    
+    if (numberMatch) {
+      const number = numberMatch[1];
+      const title = line.substring(numberMatch[0].length).trim();
+      const level = number.match(/^\d+\./) ? 1 : 2;
+      const isSubsection = level > 1;
+      
+      // Look for description in the next line
+      let description = '';
+      if (i + 1 < lines.length && !lines[i + 1].match(/^(\d+\.|[a-z]\.|[A-Z]\.|\d+\)|\-|\*)\s*/)) {
+        description = lines[i + 1].trim();
+        i++; // Skip the description line
+      }
+
+      items.push({
+        title,
+        level,
+        number: number.replace(/\.$/, ''),
+        isSubsection,
+        description
+      });
+    }
+  }
+
+  return items;
+}
 
 export async function generateResearch(
   topic: string,
+  mode: ResearchMode,
+  type: ResearchType,
   progressCallback: (progress: number, message: string) => void
 ): Promise<ResearchResult> {
   try {
-    let sections: any[] = [];
+    let sections: ResearchSection[] = [];
     let references: string[] = [];
     let outline: string = '';
     let consecutiveErrors = 0;
@@ -39,11 +73,7 @@ export async function generateResearch(
     const baseDelay = 20000; // 20 seconds base delay
 
     progressCallback(0, 'Generating outline...');
-    outline = await generateDetailedOutline(
-      `Generate a detailed outline for research on: ${topic}`,
-      'academic',  // default mode
-      'article'    // default type
-    );
+    outline = await generateDetailedOutline(topic, mode, type);
     if (!outline) {
       throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate outline');
     }
@@ -83,39 +113,23 @@ export async function generateResearch(
           await new Promise(resolve => setTimeout(resolve, currentDelay));
         }
 
-        const section = await generateSection(topic, item.title, item.isSubsection);
+        const content = await generateSection(topic, item.title, item.isSubsection);
         console.log(`Successfully generated section: ${item.title}`);
         
-        if (section.warning) {
-          console.warn(`Warning for section ${item.title}:`, section.warning);
-          progressCallback(
-            currentProgress,
-            `[${i + 1}/${outlineItems.length}] Note: ${section.warning} for "${item.title}"`
-          );
-        }
-
-        if (!section || !section.content) {
-          throw new ResearchException(ResearchError.GENERATION_ERROR, `Failed to generate content for section: ${item.title}`);
-        }
-
-        // Update section number
-        section.number = item.number;
+        const wordCount = content.split(/\s+/).length;
+        const minWords = item.isSubsection ? 2000 : 3000;
         
-        // Add section to appropriate place in hierarchy
-        if (item.isSubsection) {
-          const parentNumber = item.number.split('.')[0];
-          const parentSection = sections.find(s => s.number === parentNumber);
-          if (parentSection) {
-            parentSection.subsections = parentSection.subsections || [];
-            parentSection.subsections.push(section);
-            console.log(`Added subsection ${item.number} to parent ${parentNumber}`);
-          } else {
-            console.warn(`Could not find parent section for subsection ${item.number}`);
-          }
-        } else {
-          sections.push(section);
-          console.log(`Added main section ${item.number}`);
+        let warning: string | undefined;
+        if (wordCount < minWords) {
+          warning = `Content length (${wordCount} words) is below the minimum requirement of ${minWords} words.`;
         }
+
+        sections.push({
+          title: item.title,
+          content,
+          number: item.number,
+          warning
+        });
 
         consecutiveErrors = 0;
         rateLimitHits = 0;
@@ -154,23 +168,15 @@ export async function generateResearch(
           warning: 'Section generation failed'
         };
         
-        if (item.isSubsection) {
-          const parentNumber = item.number.split('.')[0];
-          const parentSection = sections.find(s => s.number === parentNumber);
-          if (parentSection) {
-            parentSection.subsections = parentSection.subsections || [];
-            parentSection.subsections.push(failedSection);
-          }
-        } else {
-          sections.push(failedSection);
-        }
+        sections.push(failedSection);
       }
     }
 
     // Generate references
     progressCallback(80, 'Generating references...');
     try {
-      references = await generateReferences(topic);
+      const referencesContent = await generateReferences(topic);
+      references = referencesContent.split('\n').filter(ref => ref.trim().length > 0);
       if (!references || !references.length) {
         console.warn('No references generated');
         references = [];
@@ -187,68 +193,3 @@ export async function generateResearch(
     throw error;
   }
 }
-
-const parseDetailedOutline = (outline: string): OutlineItem[] => {
-  const items: OutlineItem[] = [];
-  let currentSection: string[] = [];
-  
-  const lines = outline.split('\n').map(line => line.trim()).filter(line => line);
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    
-    // Check if this is a new section/subsection
-    if (/^\d+(\.\d+)?\./.test(line)) {
-      // If we have a previous section, process it
-      if (currentSection.length > 0) {
-        const item = processOutlineSection(currentSection);
-        if (item) {
-          items.push(item);
-        }
-        currentSection = [];
-      }
-    }
-    currentSection.push(line);
-  }
-  
-  // Process the last section
-  if (currentSection.length > 0) {
-    const item = processOutlineSection(currentSection);
-    if (item) {
-      items.push(item);
-    }
-  }
-  
-  return items;
-};
-
-const processOutlineSection = (lines: string[]): OutlineItem | null => {
-  if (lines.length === 0) return null;
-  
-  const titleLine = lines[0];
-  const match = titleLine.match(/^(\d+(\.\d+)?)\.\s+(.+)$/);
-  if (!match) {
-    return null;
-  }
-  
-  const number = match[1];
-  const title = match[3];
-  const requirements: string[] = [];
-  
-  let inRequirements = false;
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (line.toLowerCase() === 'requirements:') {
-      inRequirements = true;
-    } else if (inRequirements && line.startsWith('-')) {
-      requirements.push(line.substring(1).trim());
-    }
-  }
-  
-  return {
-    number,
-    title,
-    requirements,
-    isSubsection: number.includes('.')
-  };
-};

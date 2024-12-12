@@ -15,20 +15,26 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  SelectChangeEvent
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { generateResearch } from '../services/researchService';
 import { RootState } from '../store';
 import { 
   setMode, 
   setType, 
   setSections, 
-  setReferences, 
   setError,
   setTitle,
   ResearchMode,
   ResearchType
 } from '../store/slices/researchSlice';
+import {
+  generateDetailedOutline,
+  generateSection,
+  ResearchException,
+  ResearchError
+} from '../services/api';
+import { parseDetailedOutline } from '../services/researchService';
 import { generateWordDocument, generatePdfDocument, downloadDocument } from '../services/documentService';
 
 interface ProgressState {
@@ -49,35 +55,62 @@ export default function ResearchPage() {
     message: '',
   });
 
-  const handleModeChange = (event: any) => {
-    dispatch(setMode(event.target.value as ResearchMode));
+  const handleModeChange = (e: SelectChangeEvent<string>) => {
+    dispatch(setMode(e.target.value as ResearchMode));
   };
 
-  const handleTypeChange = (event: any) => {
-    dispatch(setType(event.target.value as ResearchType));
+  const handleTypeChange = (e: SelectChangeEvent<string>) => {
+    dispatch(setType(e.target.value as ResearchType));
   };
 
   const handleGenerateResearch = async () => {
-    if (!query) {
-      dispatch(setError('Please enter a research topic'));
-      return;
-    }
-
     setIsGenerating(true);
     dispatch(setError(null));
     setProgressState({ progress: 0, message: 'Starting research generation...' });
 
     try {
-      const result = await generateResearch(
+      // Step 1: Generate outline based on research settings
+      setProgressState({ progress: 10, message: 'Generating outline...' });
+      const outline = await generateDetailedOutline(
         query,
-        (progress: number, message: string) => {
-          setProgressState({ progress, message });
-        }
+        research.mode.toLowerCase(),
+        research.type.toLowerCase()
       );
 
-      dispatch(setSections(result.sections));
-      dispatch(setReferences(result.references));
+      if (!outline) {
+        throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate outline');
+      }
+
+      // Step 2: Parse outline into sections
+      setProgressState({ progress: 30, message: 'Processing outline...' });
+      const outlineItems = parseDetailedOutline(outline);
+      
+      // Step 3: Generate content for each section
+      let sections: any[] = [];
+      let totalSections = outlineItems.length;
+      
+      for (let i = 0; i < outlineItems.length; i++) {
+        const item = outlineItems[i];
+        setProgressState({
+          progress: 30 + Math.floor((i / totalSections) * 60),
+          message: `Generating section ${i + 1} of ${totalSections}: ${item.title}`
+        });
+
+        const section = await generateSection(
+          query,
+          item.title,
+          item.isSubsection
+        );
+
+        sections.push(section);
+      }
+
+      // Step 4: Update store with generated content
+      setProgressState({ progress: 90, message: 'Finalizing research...' });
+      dispatch(setSections(sections));
       dispatch(setTitle(query));
+
+      setProgressState({ progress: 100, message: 'Research generation complete!' });
     } catch (error) {
       if (error instanceof Error) {
         dispatch(setError(error.message));
@@ -87,6 +120,43 @@ export default function ResearchPage() {
     } finally {
       setIsGenerating(false);
       setProgressState({ progress: 0, message: '' });
+    }
+  };
+
+  const handleExportDocument = async (format: 'word' | 'pdf') => {
+    setIsLoading(true);
+    try {
+      const documentOptions = {
+        title: research.title,
+        author: 'AI Researcher',
+        sections: research.sections,
+        references: research.references
+      };
+
+      let blob: Blob;
+      if (format === 'word') {
+        blob = await generateWordDocument(documentOptions);
+        downloadDocument(blob, `${research.title.replace(/\s+/g, '_')}.docx`);
+      } else {
+        blob = await generatePdfDocument(
+          {
+            title: research.title,
+            author: 'AI Researcher',
+            created: new Date()
+          },
+          research.sections,
+          research.references
+        );
+        downloadDocument(blob, `${research.title.replace(/\s+/g, '_')}.pdf`);
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        dispatch(setError(error.message));
+      } else {
+        dispatch(setError(`Failed to generate ${format.toUpperCase()} document`));
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -173,62 +243,13 @@ export default function ResearchPage() {
     </Paper>
   );
 
-  const handleDownloadWord = async () => {
-    try {
-      if (!research.sections || research.sections.length === 0) {
-        dispatch(setError('No research content to download'));
-        return;
-      }
-
-      setIsLoading(true);
-      const blob = await generateWordDocument({
-        title: research.title,
-        author: 'Anonymous',
-        sections: research.sections,
-        references: research.references || []
-      });
-      downloadDocument(blob, `${research.title.replace(/[^a-zA-Z0-9]/g, '_')}.docx`);
-    } catch (error) {
-      dispatch(setError('Failed to generate Word document'));
-      console.error('Word document generation error:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDownloadPdf = async () => {
-    try {
-      if (!research.sections || research.sections.length === 0) {
-        dispatch(setError('No research content to download'));
-        return;
-      }
-
-      setIsLoading(true);
-      const blob = await generatePdfDocument(
-        {
-          title: research.title,
-          author: 'Anonymous',
-          created: new Date()
-        },
-        research.sections,
-        research.references || []
-      );
-      downloadDocument(blob, `${research.title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
-    } catch (error) {
-      dispatch(setError('Failed to generate PDF document'));
-      console.error('PDF document generation error:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const exportButtons = (
     <Box sx={{ display: 'flex', gap: 1 }}>
       <Tooltip title={!research.sections.length ? 'Generate research first' : 'Download as Word'}>
         <span>
           <Button
             variant="contained"
-            onClick={handleDownloadWord}
+            onClick={() => handleExportDocument('word')}
             disabled={!research.sections.length || isLoading}
             startIcon={<></>}
           >
@@ -240,7 +261,7 @@ export default function ResearchPage() {
         <span>
           <Button
             variant="contained"
-            onClick={handleDownloadPdf}
+            onClick={() => handleExportDocument('pdf')}
             disabled={!research.sections.length || isLoading}
             startIcon={<></>}
           >
@@ -299,7 +320,7 @@ export default function ResearchPage() {
                 <Button
                   variant="contained"
                   onClick={handleGenerateResearch}
-                  disabled={!query || isGenerating}
+                  disabled={isGenerating}
                 >
                   Generate Research
                 </Button>
