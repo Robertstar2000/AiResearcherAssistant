@@ -50,7 +50,8 @@ export default function ResearchPage() {
   const research = useSelector((state: RootState) => state.research);
   const [query, setQuery] = useState('');
   const [isGeneratingTarget, setIsGeneratingTarget] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
+  const [isGeneratingSections, setIsGeneratingSections] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
@@ -85,51 +86,22 @@ export default function ResearchPage() {
     }
   };
 
-  const handleGenerateResearch = async () => {
+  const handleGenerateOutline = async () => {
     if (!research.title) {
       dispatch(setError('Please generate a research target first'));
       return;
     }
 
-    setIsGenerating(true);
+    setIsGeneratingOutline(true);
     setShowOutline(false);
     dispatch(setError(null));
-    setProgressState({ progress: 0, message: 'Starting research generation...' });
+    setProgressState({ progress: 0, message: 'Starting outline generation...' });
 
     try {
       // Generate outline based on research settings and combined prompts
       setProgressState({ progress: 10, message: 'Generating outline...' });
       
       // Combine all available context for the outline generation
-      const getSectionRecommendations = (mode: string) => {
-        switch (mode.toLowerCase()) {
-          case 'article':
-            return `
-Recommended Section Structure:
-- 8 main sections: Abstract, Introduction, Literature Review, Methodology, Results, Discussion, Conclusion, References
-- Each main section should have 3-4 subsections
-- Total expected sections: ~30 (8 main + ~22 subsections)`;
-          case 'literature review':
-            return `
-Recommended Section Structure:
-- 6 main sections: Introduction, Review Methodology, Literature Analysis, Findings Synthesis, Discussion, Conclusion
-- Each main section should have 3 subsections
-- Total expected sections: ~24 (6 main + ~18 subsections)`;
-          case 'technical':
-            return `
-Recommended Section Structure:
-- 7 main sections: Abstract, Introduction, Background, Methodology, Implementation, Results, Conclusion
-- Each main section should have 2-3 subsections
-- Total expected sections: ~25 (7 main + ~18 subsections)`;
-          default:
-            return `
-Recommended Section Structure:
-- 5-7 main sections
-- Each main section should have 2-3 subsections
-- Total expected sections: ~20-25 sections`;
-        }
-      };
-
       const combinedPrompt = `Research Topic: ${query}
 Research Target: ${research.title}
 Research Mode: ${research.mode}
@@ -166,15 +138,35 @@ Requirements:
       const outlineItems = parseDetailedOutline(outline);
       setParsedOutline(outlineItems);
       setOutlineWordCount(calculateOutlineWordCount(outlineItems));
+      setProgressState({ progress: 100, message: 'Outline generation complete!' });
       
+    } catch (error) {
+      console.error('Error generating outline:', error);
+      dispatch(setError(error instanceof Error ? error.message : 'Failed to generate outline'));
+    } finally {
+      setIsGeneratingOutline(false);
+    }
+  };
+
+  const handleGenerateResearch = async () => {
+    if (!showOutline || parsedOutline.length === 0) {
+      dispatch(setError('Please review the outline first'));
+      return;
+    }
+
+    setIsGeneratingSections(true);
+    dispatch(setError(null));
+    setProgressState({ progress: 0, message: 'Starting section generation...' });
+
+    try {
       // Generate content for each section
       let sections: any[] = [];
-      let totalSections = outlineItems.length;
+      let totalSections = parsedOutline.length;
       
-      for (let i = 0; i < outlineItems.length; i++) {
-        const item = outlineItems[i];
+      for (let i = 0; i < parsedOutline.length; i++) {
+        const item = parsedOutline[i];
         setProgressState({
-          progress: 30 + Math.floor((i / totalSections) * 60),
+          progress: Math.floor((i / totalSections) * 100),
           message: `Generating section ${i + 1} of ${totalSections}: ${item.title}`
         });
 
@@ -183,24 +175,19 @@ Requirements:
           item.title,
           item.isSubsection
         );
-
         sections.push(section);
       }
 
-      // Step 4: Update store with generated content
+      // Update store with generated content
       setProgressState({ progress: 90, message: 'Finalizing research...' });
       dispatch(setSections(sections));
 
       setProgressState({ progress: 100, message: 'Research generation complete!' });
     } catch (error) {
-      if (error instanceof Error) {
-        dispatch(setError(error.message));
-      } else {
-        dispatch(setError('Failed to generate research'));
-      }
+      console.error('Error generating research:', error);
+      dispatch(setError(error instanceof Error ? error.message : 'Failed to generate research'));
     } finally {
-      setIsGenerating(false);
-      setProgressState({ progress: 0, message: '' });
+      setIsGeneratingSections(false);
     }
   };
 
@@ -273,7 +260,7 @@ Requirements:
   };
 
   const renderProgress = () => {
-    if (!isGenerating) return null;
+    if (!isGeneratingOutline && !isGeneratingSections) return null;
     
     return (
       <Box sx={{ width: '100%', mb: 4 }}>
@@ -409,7 +396,7 @@ Requirements:
                   placeholder="Enter your research topic"
                   fullWidth
                   variant="outlined"
-                  disabled={isGenerating || isGeneratingTarget}
+                  disabled={isGeneratingTarget || isGeneratingOutline || isGeneratingSections}
                 />
               </FormControl>
               <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
@@ -417,7 +404,7 @@ Requirements:
                   variant="contained"
                   color="primary"
                   onClick={handleGenerateTarget}
-                  disabled={!query || isGenerating || isGeneratingTarget}
+                  disabled={!query || isGeneratingTarget || isGeneratingOutline || isGeneratingSections}
                 >
                   {isGeneratingTarget ? 'Generating Target...' : 'Generate Target'}
                 </Button>
@@ -481,19 +468,45 @@ Requirements:
                   <Button
                     variant="contained"
                     color="primary"
-                    onClick={handleGenerateResearch}
-                    disabled={isGenerating}
+                    onClick={handleGenerateOutline}
+                    disabled={isGeneratingOutline || isGeneratingSections}
                   >
-                    {isGenerating ? 'Generating Research...' : 'Generate Research'}
+                    {isGeneratingOutline ? 'Generating Outline...' : 'Generate Outline'}
                   </Button>
                   {parsedOutline.length > 0 && !showOutline && (
                     <Button
-                      variant="outlined"
-                      color="primary"
+                      variant="contained"
+                      color="secondary"
                       onClick={handleShowOutline}
-                      disabled={isGenerating}
+                      disabled={isGeneratingOutline || isGeneratingSections}
+                      sx={{ 
+                        animation: !showOutline ? 'pulse 1.5s infinite' : 'none',
+                        '@keyframes pulse': {
+                          '0%': { boxShadow: '0 0 0 0 rgba(156, 39, 176, 0.4)' },
+                          '70%': { boxShadow: '0 0 0 10px rgba(156, 39, 176, 0)' },
+                          '100%': { boxShadow: '0 0 0 0 rgba(156, 39, 176, 0)' }
+                        }
+                      }}
                     >
                       Show Outline
+                    </Button>
+                  )}
+                  {showOutline && (
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={handleGenerateResearch}
+                      disabled={isGeneratingSections}
+                      sx={{ 
+                        animation: 'pulse 1.5s infinite',
+                        '@keyframes pulse': {
+                          '0%': { boxShadow: '0 0 0 0 rgba(25, 118, 210, 0.4)' },
+                          '70%': { boxShadow: '0 0 0 10px rgba(25, 118, 210, 0)' },
+                          '100%': { boxShadow: '0 0 0 0 rgba(25, 118, 210, 0)' }
+                        }
+                      }}
+                    >
+                      {isGeneratingSections ? 'Generating Research...' : 'Generate Research'}
                     </Button>
                   )}
                   {exportButtons}
@@ -530,3 +543,32 @@ Requirements:
     </Container>
   )
 }
+
+const getSectionRecommendations = (mode: string) => {
+  switch (mode.toLowerCase()) {
+    case 'article':
+      return `
+Recommended Section Structure:
+- 8 main sections: Abstract, Introduction, Literature Review, Methodology, Results, Discussion, Conclusion, References
+- Each main section should have 3-4 subsections
+- Total expected sections: ~30 (8 main + ~22 subsections)`;
+    case 'literature review':
+      return `
+Recommended Section Structure:
+- 6 main sections: Introduction, Review Methodology, Literature Analysis, Findings Synthesis, Discussion, Conclusion
+- Each main section should have 3 subsections
+- Total expected sections: ~24 (6 main + ~18 subsections)`;
+    case 'technical':
+      return `
+Recommended Section Structure:
+- 7 main sections: Abstract, Introduction, Background, Methodology, Implementation, Results, Conclusion
+- Each main section should have 2-3 subsections
+- Total expected sections: ~25 (7 main + ~18 subsections)`;
+    default:
+      return `
+Recommended Section Structure:
+- 5-7 main sections
+- Each main section should have 2-3 subsections
+- Total expected sections: ~20-25 sections`;
+  }
+};

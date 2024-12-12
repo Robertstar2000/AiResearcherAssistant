@@ -346,13 +346,22 @@ Instructions:
 - Create a clear, hierarchical structure
 - Use numbers for main sections (1., 2., etc.)
 - Use letters for subsections (a., b., etc.)
-- Each section should have 2-3 subsections
-- Include brief descriptions of what each section should cover`;
+- For basic mode: Include 5-7 main sections with 2-3 subsections each
+- For advanced mode: Include 7-9 main sections with 3-4 subsections each
+- Include brief descriptions of what each section should cover
+- Ensure logical flow between sections
+- Each section should be clearly related to the research topic`;
 
   const prompt = `Generate a detailed outline for a ${mode} ${type} research paper about: ${topic}
 
 The outline should follow academic standards and be well-structured.
-Each section should include a brief description of its content requirements.`;
+Each section should include a brief description of its content requirements.
+
+Section Requirements:
+- Basic mode: 5-7 main sections, 2-3 subsections each (total ~15-21 sections)
+- Advanced mode: 7-9 main sections, 3-4 subsections each (total ~21-36 sections)
+- Technical papers may require additional methodology and implementation sections
+- Literature reviews should focus on analysis and synthesis sections`;
 
   try {
     const response = await makeGroqApiCall(prompt, 2000, systemPrompt);
@@ -403,38 +412,6 @@ export async function getResearchHistory(userId: string): Promise<any[]> {
     if (error) throw error;
     return data || [];
   } catch (error) {
-    throw new ResearchException(
-      ResearchError.API_ERROR,
-      error instanceof Error ? error.message : 'Unknown error',
-      { originalError: error }
-    );
-  }
-};
-
-export async function generateOutline(topic: string): Promise<string> {
-  const systemPrompt = 'You are a research outline generator. Generate a detailed outline for the given research topic.';
-  const prompt = `Generate a detailed outline for research about: ${topic}
-
-Compress the outline instructions into the least tokens that captures the essence of the outline  
-Format the outline with:
-1. Main sections  (1., 2., etc.)
-2. Subsections  (a., b., etc.)
-3. Include brief descriptions what each section covers
-4. Ensure logical flow & progression of ideas
-5. Include standard research paper sections (Introduction, Methodology, Results, Discussion, Conclusion)`;
-
-  try {
-    const response = await makeGroqApiCall(prompt, 2000, systemPrompt);
-    if (!response?.choices?.[0]?.message?.content) {
-      throw new ResearchException(
-        ResearchError.GENERATION_ERROR,
-        'Failed to generate outline'
-      );
-    }
-
-    return response.choices[0].message.content.trim();
-  } catch (error) {
-    console.error('Error generating outline:', error);
     throw new ResearchException(
       ResearchError.API_ERROR,
       error instanceof Error ? error.message : 'Unknown error',
