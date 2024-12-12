@@ -1,18 +1,13 @@
-/* @type {import('tailwindcss').Config} */
-/* csstype-disable -- Tailwind CSS directives */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
+/* Global styles */
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --primary-color: #1976d2;
+  --secondary-color: #dc004e;
+  --background-color: #ffffff;
+  --text-color: #333333;
+  --error-color: #f44336;
+  --success-color: #4caf50;
+  --border-radius: 4px;
+  --spacing-unit: 8px;
 }
 
 * {
@@ -30,6 +25,15 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
@@ -37,4 +41,54 @@ body {
   width: 100%;
   display: flex;
   flex-direction: column;
+}
+
+/* Utility Classes */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.gap-2 { gap: calc(var(--spacing-unit) * 2); }
+.gap-4 { gap: calc(var(--spacing-unit) * 4); }
+
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+
+.p-2 { padding: calc(var(--spacing-unit) * 2); }
+.p-4 { padding: calc(var(--spacing-unit) * 4); }
+
+.m-2 { margin: calc(var(--spacing-unit) * 2); }
+.m-4 { margin: calc(var(--spacing-unit) * 4); }
+
+.mt-2 { margin-top: calc(var(--spacing-unit) * 2); }
+.mb-2 { margin-bottom: calc(var(--spacing-unit) * 2); }
+
+/* Custom Components */
+.paper {
+  background-color: var(--background-color);
+  border-radius: var(--border-radius);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: calc(var(--spacing-unit) * 2);
+}
+
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--spacing-unit);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out;
 }
