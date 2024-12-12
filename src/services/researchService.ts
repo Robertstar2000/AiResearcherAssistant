@@ -127,7 +127,13 @@ export async function generateResearch(
           await new Promise(resolve => setTimeout(resolve, currentDelay));
         }
 
-        const content = await generateSection(topic, item.title, item.isSubsection);
+        const content = await generateSection(
+          topic,
+          item.title,
+          item.description || '',
+          item.isSubsection,
+          outlineItems
+        );
         console.log(`Successfully generated section: ${item.title}`);
         
         const wordCount = content.split(/\s+/).length;
