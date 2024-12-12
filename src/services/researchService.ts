@@ -18,50 +18,56 @@ interface ResearchResult {
 export function parseDetailedOutline(outline: string): OutlineItem[] {
   const lines = outline.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   const items: OutlineItem[] = [];
+  let currentDescription: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     
-    // Skip empty lines and bracket content
-    if (line.length === 0 || line.startsWith('[') || line.endsWith(']')) {
+    // Skip empty lines, bracket content, and the "Research Outline" header
+    if (line.length === 0 || 
+        line.startsWith('[') || 
+        line.endsWith(']') ||
+        line.toLowerCase().includes('research outline')) {
       continue;
     }
 
-    // Match section numbers (1., 2., etc.) or subsection letters (a., b., etc.) or bullets (•, -, *)
-    const numberMatch = line.match(/^(\d+\.|[a-z]\.|[A-Z]\.|\•|\-|\*)\s*/);
+    // Match numbered sections (e.g., "1.", "12.")
+    const sectionMatch = line.match(/^(\d+)\.\s+(.+)$/);
     
-    if (numberMatch) {
-      const number = numberMatch[1];
-      const title = line.substring(numberMatch[0].length).trim();
-      const level = number.match(/^(\d+\.|[A-Z]\.)/) ? 1 : 2;
-      const isSubsection = level > 1;
-      
-      // Look for description in the next lines
-      let description = '';
-      
-      // Keep looking for description until we find another section or end
-      while (i + 1 < lines.length && 
-             !lines[i + 1].match(/^(\d+\.|[a-z]\.|[A-Z]\.|\•|\-|\*)\s*/) && 
-             !lines[i + 1].startsWith('[') &&
-             lines[i + 1].trim().length > 0) {
-        description += (description ? ' ' : '') + lines[i + 1].trim();
-        i++;
+    if (sectionMatch) {
+      // If we were collecting a description, add it to the previous section
+      if (currentDescription.length > 0 && items.length > 0) {
+        items[items.length - 1].description = currentDescription.join('\n');
+        currentDescription = [];
       }
 
-      // Ensure description is never undefined
-      const finalDescription = description || '[Description to be added]';
-
+      const [, number, title] = sectionMatch;
+      
       items.push({
-        title,
-        number: number.replace(/\.$/, ''),
-        description: finalDescription,
-        isSubsection,
-        level
+        title: title.trim(),
+        number,
+        description: '', // Will be populated as we process subsequent lines
+        isSubsection: false,
+        level: 1
       });
+    } else {
+      // If line starts with bullet points or is indented, it's part of the current section's description
+      if (items.length > 0) {
+        currentDescription.push(line);
+      }
     }
   }
 
-  return items;
+  // Don't forget to add the description for the last section
+  if (currentDescription.length > 0 && items.length > 0) {
+    items[items.length - 1].description = currentDescription.join('\n');
+  }
+
+  // Ensure every section has at least a minimal description
+  return items.map(item => ({
+    ...item,
+    description: item.description || '[Description to be added]'
+  }));
 }
 
 export async function generateResearch(
