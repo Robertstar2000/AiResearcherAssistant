@@ -59,6 +59,7 @@ const ResearchPage = () => {
   const dispatch = useDispatch();
   const research = useSelector((state: RootState) => state.research);
   const user = useSelector((state: RootState) => state.auth.user);
+  const isAuthenticated = useSelector((state: RootState) => state.auth.isAuthenticated);
   const [query, setQuery] = useState('')
   const [editingTitle, setEditingTitle] = useState(false)
   const [editedTitle, setEditedTitle] = useState('')
@@ -120,7 +121,12 @@ const ResearchPage = () => {
       return
     }
 
-    setIsLoading(true)
+    if (!isAuthenticated) {
+      dispatch(setError('Please sign in to generate research'))
+      return
+    }
+
+    setIsLoading(true);
     try {
       const result = await generateResearch(query, (progress, total, message) => {
         updateProgress(progress, total, message);
@@ -383,11 +389,6 @@ const ResearchPage = () => {
 
   const handleDownloadWord = async () => {
     try {
-      if (!user || !user.name) {
-        dispatch(setError('Please sign in to download documents'));
-        return;
-      }
-
       if (!research.sections || research.sections.length === 0) {
         dispatch(setError('No research content available'));
         return;
@@ -396,18 +397,13 @@ const ResearchPage = () => {
       setIsLoading(true);
       const blob = await generateWordDocument({
         title: research.title,
-        author: user.name,
+        author: 'Anonymous',
         sections: research.sections,
         references: research.references || []
       });
-
       downloadDocument(blob, `${research.title.replace(/[^a-zA-Z0-9]/g, '_')}.docx`);
     } catch (error) {
-      if (error instanceof ResearchException) {
-        dispatch(setError(error.message));
-      } else {
-        dispatch(setError('Failed to generate Word document'));
-      }
+      dispatch(setError('Failed to generate Word document'));
       console.error('Word document generation error:', error);
     } finally {
       setIsLoading(false);
@@ -416,36 +412,24 @@ const ResearchPage = () => {
 
   const handleDownloadPdf = async () => {
     try {
-      if (!user || !user.name) {
-        dispatch(setError('Please sign in to download documents'));
-        return;
-      }
-
       if (!research.sections || research.sections.length === 0) {
         dispatch(setError('No research content available'));
         return;
       }
 
       setIsLoading(true);
-      const metadata = {
-        title: research.title,
-        author: user.name,
-        created: new Date()
-      };
-
       const blob = await generatePdfDocument(
-        metadata,
+        {
+          title: research.title,
+          author: 'Anonymous',
+          created: new Date()
+        },
         research.sections,
         research.references || []
       );
-
       downloadDocument(blob, `${research.title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
     } catch (error) {
-      if (error instanceof ResearchException) {
-        dispatch(setError(error.message));
-      } else {
-        dispatch(setError('Failed to generate PDF document'));
-      }
+      dispatch(setError('Failed to generate PDF document'));
       console.error('PDF document generation error:', error);
     } finally {
       setIsLoading(false);
@@ -454,7 +438,7 @@ const ResearchPage = () => {
 
   const exportButtons = (
     <Box sx={{ display: 'flex', gap: 1 }}>
-      <Tooltip title={!research.sections.length ? 'Generate research content first' : 'Download as Word document'}>
+      <Tooltip title={!research.sections.length ? 'Generate research first' : 'Download as Word'}>
         <span>
           <Button
             variant="contained"
@@ -466,7 +450,7 @@ const ResearchPage = () => {
           </Button>
         </span>
       </Tooltip>
-      <Tooltip title={!research.sections.length ? 'Generate research content first' : 'Download as PDF document'}>
+      <Tooltip title={!research.sections.length ? 'Generate research first' : 'Download as PDF'}>
         <span>
           <Button
             variant="contained"
