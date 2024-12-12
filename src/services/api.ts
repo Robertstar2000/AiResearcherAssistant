@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
 import { ResearchException, ResearchError } from './researchErrors';
-import { store } from '../store';
 
 // API Configuration
 const supabaseUrl = process.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL;
@@ -412,45 +411,46 @@ Format the outline with:
   }
 };
 
-export const generateDetailedOutline = async (topic: string): Promise<string> => {
-  const { mode, type } = store.getState().research;
+export const generateDetailedOutline = async (
+  topic: string,
+  mode: string = 'academic',
+  type: string = 'article'
+): Promise<string> => {
   const modeType = `${mode}-${type}`.toLowerCase();
 
   // Get section requirements based on mode and type
-  let minSections: number;
-  let maxSections: number;
-  let requiresHypothesis = false;
+  let targetSections: number;
   let endSection = 'conclusion';
+  let requiresHypothesis = false;
 
-  switch (modeType) {
-    case 'basic-literature':
-    case 'basic-general':
-      minSections = 7;
-      maxSections = 12;
-      break;
-    case 'basic-experimental':  
-      minSections = 9;
-      maxSections = 12;
-      requiresHypothesis = true;
-      endSection = 'summary';
-      break;
-    case 'advanced-literature':
-    case 'advanced-general':
-      minSections = 9;
-      maxSections = 18;
-      break;
-    case 'advanced-experimental':
-      minSections = 12;
-      maxSections = 18;
-      requiresHypothesis = true;
-      endSection = 'summary';
-      break;
-    default:
-      minSections = 6;
-      maxSections = 12;
+  // First check if mode is article
+  if (mode.toLowerCase() === 'article') {
+    targetSections = 4;
+  } else {
+    // Handle other mode-type combinations
+    switch (modeType) {
+      case 'basic-literature':
+      case 'basic-general':
+        targetSections = 8;
+        break;
+      case 'basic-experimental':  
+        targetSections = 10;
+        requiresHypothesis = true;
+        endSection = 'summary';
+        break;
+      case 'advanced-literature':
+      case 'advanced-general':
+        targetSections = 12;
+        break;
+      case 'advanced-experimental':
+        targetSections = 15;
+        requiresHypothesis = true;
+        endSection = 'summary';
+        break;
+      default:
+        targetSections = 8;
+    }
   }
-
-  const targetSections = Math.floor((minSections + maxSections) / 2);
 
   const systemPrompt = `You are a research outline generator. Create a outline with a title and compress into the least tokens that captures the essence of the outline. Use cripitic prompt to generate academic research that meets these requirements:
 1. Generate EXACTLY ${targetSections} main sections (no more, no less)
@@ -483,57 +483,6 @@ ${requiresHypothesis ? '- Include hypothesis, methodology, and experimental desi
     throw new ResearchException(
       ResearchError.GENERATION_ERROR,
       'Failed to generate outline'
-    );
-  }
-};
-
-// This function is deprecated. Use parseDetailedOutline from researchService.ts instead
-export const parseSectionsFromOutline = (outline: string): string[] => {
-  console.warn('Warning: parseSectionsFromOutline is deprecated. Use parseDetailedOutline from researchService.ts instead');
-  try {
-    if (!outline || typeof outline !== 'string') {
-      throw new Error('Invalid outline: must be a non-empty string');
-    }
-
-    const lines = outline.split('\n');
-    const sections: string[] = [];
-    let currentSection = '';
-
-    for (const line of lines) {
-      // Skip empty lines
-      if (!line.trim()) continue;
-
-      // Check if line starts with a number (main section) or letter (subsection)
-      const isMainSection = /^\d+\./.test(line.trim());
-      const isSubSection = /^[a-z]\.|\([a-z]\)/.test(line.trim().toLowerCase());
-
-      if (isMainSection || isSubSection) {
-        if (currentSection) {
-          sections.push(currentSection.trim());
-        }
-        currentSection = line.trim();
-      } else {
-        // If it's a continuation of the current section, append it
-        currentSection = currentSection ? `${currentSection} ${line.trim()}` : line.trim();
-      }
-    }
-
-    // Add the last section if it exists
-    if (currentSection) {
-      sections.push(currentSection.trim());
-    }
-
-    if (sections.length === 0) {
-      throw new Error('No sections found in outline');
-    }
-
-    return sections;
-  } catch (error) {
-    console.error('Error parsing outline:', error);
-    throw new ResearchException(
-      ResearchError.PARSING_ERROR,
-      `Failed to parse outline: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      { originalError: error, outline }
     );
   }
 };
