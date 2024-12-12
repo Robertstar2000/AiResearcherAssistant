@@ -15,9 +15,11 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  TextField,
   SelectChangeEvent
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import SaveIcon from '@mui/icons-material/Save';
 import { RootState } from '../store';
 import { 
   setMode, 
@@ -223,8 +225,9 @@ export default function ResearchPage() {
           label="Mode"
           onChange={handleModeChange}
         >
-          <MenuItem value="Basic">Basic</MenuItem>
-          <MenuItem value="Advanced">Advanced</MenuItem>
+          <MenuItem value={ResearchMode.Basic}>Basic</MenuItem>
+          <MenuItem value={ResearchMode.Advanced}>Advanced</MenuItem>
+          <MenuItem value={ResearchMode.Article}>Article</MenuItem>
         </Select>
       </FormControl>
 
@@ -235,9 +238,9 @@ export default function ResearchPage() {
           label="Type"
           onChange={handleTypeChange}
         >
-          <MenuItem value="General">General Research</MenuItem>
-          <MenuItem value="Literature">Literature Review</MenuItem>
-          <MenuItem value="Experiment">Experiment Design</MenuItem>
+          <MenuItem value={ResearchType.General}>General Research</MenuItem>
+          <MenuItem value={ResearchType.Literature}>Literature Review</MenuItem>
+          <MenuItem value={ResearchType.Experiment}>Experiment Design</MenuItem>
         </Select>
       </FormControl>
     </Paper>
@@ -306,21 +309,21 @@ export default function ResearchPage() {
 
             <Box sx={{ mb: 3 }}>
               <FormControl fullWidth sx={{ mb: 2 }}>
-                <InputLabel>Target Research Topic</InputLabel>
-                <Select
+                <TextField
+                  label="Research Topic"
                   value={query}
-                  label="Target Research Topic"
                   onChange={(e) => setQuery(e.target.value)}
-                >
-                  <MenuItem value="Topic 1">Topic 1</MenuItem>
-                  <MenuItem value="Topic 2">Topic 2</MenuItem>
-                </Select>
+                  placeholder="Enter your research topic"
+                  fullWidth
+                  variant="outlined"
+                  disabled={isGenerating}
+                />
               </FormControl>
               <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
                 <Button
                   variant="contained"
                   onClick={handleGenerateResearch}
-                  disabled={isGenerating}
+                  disabled={isGenerating || !query.trim()}
                 >
                   Generate Research
                 </Button>
@@ -337,24 +340,21 @@ export default function ResearchPage() {
                 </Typography>
                 {editingTitle ? (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <FormControl fullWidth sx={{ mb: 2 }}>
-                      <InputLabel>Title</InputLabel>
-                      <Select
-                        value={editedTitle}
-                        label="Title"
-                        onChange={(e) => setEditedTitle(e.target.value)}
-                      >
-                        <MenuItem value="Title 1">Title 1</MenuItem>
-                        <MenuItem value="Title 2">Title 2</MenuItem>
-                      </Select>
-                    </FormControl>
+                    <TextField
+                      fullWidth
+                      value={editedTitle}
+                      onChange={(e) => setEditedTitle(e.target.value)}
+                      label="Research Target"
+                      variant="outlined"
+                      size="small"
+                    />
                     <Tooltip title="Save Target">
                       <IconButton 
                         onClick={handleTitleSave}
                         color="primary"
                         size="small"
                       >
-                        <></>
+                        <SaveIcon />
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Cancel">
