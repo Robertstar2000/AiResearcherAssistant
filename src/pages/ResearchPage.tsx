@@ -58,7 +58,6 @@ interface ProgressState {
 const ResearchPage = () => {
   const dispatch = useDispatch();
   const research = useSelector((state: RootState) => state.research);
-  const user = useSelector((state: RootState) => state.auth.user);
   const isAuthenticated = useSelector((state: RootState) => state.auth.isAuthenticated);
   const [query, setQuery] = useState('')
   const [editingTitle, setEditingTitle] = useState(false)
