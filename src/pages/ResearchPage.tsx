@@ -161,34 +161,33 @@ Requirements:
     setProgressState({ progress: 0, message: 'Starting section generation...' });
 
     try {
-      // Generate content for each section
-      let sections: any[] = [];
-      let totalSections = parsedOutline.length;
-      
-      for (let i = 0; i < parsedOutline.length; i++) {
-        const item = parsedOutline[i];
+      // Process each section in the outline sequentially
+      for (const section of parsedOutline) {
+        const sectionKey = `${section.number}`;
+        
+        // Update UI to show which section is being generated
         setProgressState({
-          progress: Math.floor((i / totalSections) * 100),
-          message: `Generating section ${i + 1} of ${totalSections}: ${item.title}`
+          progress: Math.floor((parsedOutline.indexOf(section) / parsedOutline.length) * 100),
+          message: `Generating section ${sectionKey}: ${section.title}`
         });
 
-        const section = await generateSection(
+        const content = await generateSection(
           research.title,
-          item.title,
-          item.isSubsection
+          section.title,
+          section.isSubsection
         );
-        sections.push({
-          ...item,
-          content: section
-        });
-        setGeneratedSections([...sections]); // Update UI with each new section
+        
+        // Update the generated content with the new section
+        setGeneratedSections(prev => [...prev, {
+          ...section,
+          content: content
+        }]);
       }
 
       // Update store with generated content
-      setProgressState({ progress: 90, message: 'Finalizing research...' });
-      dispatch(setSections(sections));
-
       setProgressState({ progress: 100, message: 'Research generation complete!' });
+      dispatch(setSections(generatedSections));
+
     } catch (error) {
       console.error('Error generating research:', error);
       dispatch(setError(error instanceof Error ? error.message : 'Failed to generate research'));

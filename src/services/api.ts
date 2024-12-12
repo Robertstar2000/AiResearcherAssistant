@@ -67,6 +67,12 @@ interface SectionRef {
   retryCount: number;
 }
 
+interface OutlineItem {
+  number: string;
+  title: string;
+  description: string;
+}
+
 // Helper Functions
 const waitBetweenCalls = async (retryCount = 0): Promise<void> => {
   const delay = GROQ_CONFIG.BASE_DELAY * Math.pow(2, retryCount);
@@ -192,39 +198,58 @@ export async function generateTitle(query: string): Promise<string> {
 export async function generateSection(
   topic: string,
   sectionTitle: string,
-  isSubsection: boolean = false,
-  ref: Partial<SectionRef> = { retryCount: 0 }
+  sectionDescription: string,
+  isSubsection: boolean,
+  outline: OutlineItem[]
 ): Promise<string> {
+  const outlineContext = outline
+    .map(item => `${item.number}. ${item.title}: ${item.description}`)
+    .join('\n');
+
+  const prompt = `
+Generate detailed content for the following section of a research paper:
+
+Topic: ${topic}
+Section: ${sectionTitle}
+Description: ${sectionDescription}
+Type: ${isSubsection ? 'Subsection' : 'Main Section'}
+
+Full Outline Context:
+${outlineContext}
+
+Please generate comprehensive, academic-quality content for this specific section that:
+1. Directly addresses the section title and description
+2. Maintains proper flow with other sections
+3. Uses academic language and proper citations
+4. Provides detailed analysis and examples where appropriate
+5. Stays focused on the section's specific topic while maintaining context with the overall research
+
+Generate the content now:`;
+
   try {
-    const minWords = isSubsection ? 2000 : 3000;
-    const systemPrompt = `You are a research content generator. Generate detailed, academic content in post graduate level language for the given section. The content must be at least ${minWords} words long. If you cannot generate the full content in one response, focus on providing a complete and coherent portion that can be expanded later.`;
-
-    const prompt = `Generate detailed academic content for the section "${sectionTitle}" of a research paper about "${topic}".
-The content should be thorough, well-researched, and maintain a formal academic tone.`;
-
     const response = await makeApiCall(
-      () => makeGroqApiCall(prompt, GROQ_CONFIG.MAX_TOKENS, systemPrompt),
+      () => makeGroqApiCall(prompt, GROQ_CONFIG.MAX_TOKENS),
       `Failed to generate section "${sectionTitle}"`,
-      ref.retryCount || 0
+      GROQ_CONFIG.MAX_RETRIES
     );
 
     const content = response.choices[0].message.content.trim();
     const wordCount = content.split(/\s+/).length;
 
     // If content is too short and we haven't exceeded max retries, try again
-    if (wordCount < minWords && (ref.retryCount || 0) < GROQ_CONFIG.MAX_RETRIES) {
-      console.log(`Generated content too short (${wordCount}/${minWords} words) for "${sectionTitle}". Retrying... (${(ref.retryCount || 0) + 1}/${GROQ_CONFIG.MAX_RETRIES})`);
-      await waitBetweenCalls(ref.retryCount || 0);
-      return generateSection(topic, sectionTitle, isSubsection, { retryCount: (ref.retryCount || 0) + 1 });
+    if (wordCount < 2000 && GROQ_CONFIG.MAX_RETRIES > 0) {
+      console.log(`Generated content too short (${wordCount}/2000 words) for "${sectionTitle}". Retrying... (${GROQ_CONFIG.MAX_RETRIES})`);
+      await waitBetweenCalls(GROQ_CONFIG.MAX_RETRIES - 1);
+      return generateSection(topic, sectionTitle, sectionDescription, isSubsection, outline);
     }
 
     return content;
   } catch (error) {
     if (error instanceof ResearchException && error.code === ResearchError.RATE_LIMIT_ERROR) {
-      if ((ref.retryCount || 0) < GROQ_CONFIG.MAX_RETRIES) {
-        console.log(`Rate limit hit for "${sectionTitle}". Retrying... (${(ref.retryCount || 0) + 1}/${GROQ_CONFIG.MAX_RETRIES})`);
-        await waitBetweenCalls(ref.retryCount || 0);
-        return generateSection(topic, sectionTitle, isSubsection, { retryCount: (ref.retryCount || 0) + 1 });
+      if (GROQ_CONFIG.MAX_RETRIES > 0) {
+        console.log(`Rate limit hit for "${sectionTitle}". Retrying... (${GROQ_CONFIG.MAX_RETRIES})`);
+        await waitBetweenCalls(GROQ_CONFIG.MAX_RETRIES - 1);
+        return generateSection(topic, sectionTitle, sectionDescription, isSubsection, outline);
       }
     }
     console.error(`Failed to generate section "${sectionTitle}":`, error);
