@@ -34,7 +34,8 @@ import {
   generateDetailedOutline,
   generateSection,
   ResearchException,
-  ResearchError
+  ResearchError,
+  generateTitle
 } from '../services/api';
 import { parseDetailedOutline } from '../services/researchService';
 import { generateWordDocument, generatePdfDocument, downloadDocument } from '../services/documentService';
@@ -71,7 +72,12 @@ export default function ResearchPage() {
     setProgressState({ progress: 0, message: 'Starting research generation...' });
 
     try {
-      // Step 1: Generate outline based on research settings
+      // Step 1: Generate research target
+      setProgressState({ progress: 5, message: 'Generating research target...' });
+      const researchTarget = await generateTitle(query);
+      dispatch(setTitle(researchTarget));
+
+      // Step 2: Generate outline based on research settings
       setProgressState({ progress: 10, message: 'Generating outline...' });
       const outline = await generateDetailedOutline(
         query,
@@ -83,15 +89,15 @@ export default function ResearchPage() {
         throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate outline');
       }
 
-      // Step 2: Parse outline into sections
+      // Step 3: Parse outline into sections
       setProgressState({ progress: 30, message: 'Processing outline...' });
       const outlineItems = parseDetailedOutline(outline);
       
-      // Step 3: Generate content for each section
+      // Step 4: Generate content for each section
       let sections: any[] = [];
       let totalSections = outlineItems.length;
       
-      for (let i = 0; i < outlineItems.length; i++) {
+      for (let i = 0; i <outlineItems.length; i++) {
         const item = outlineItems[i];
         setProgressState({
           progress: 30 + Math.floor((i / totalSections) * 60),
@@ -107,10 +113,9 @@ export default function ResearchPage() {
         sections.push(section);
       }
 
-      // Step 4: Update store with generated content
+      // Step 5: Update store with generated content
       setProgressState({ progress: 90, message: 'Finalizing research...' });
       dispatch(setSections(sections));
-      dispatch(setTitle(query));
 
       setProgressState({ progress: 100, message: 'Research generation complete!' });
     } catch (error) {
