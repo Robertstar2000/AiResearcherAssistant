@@ -276,7 +276,7 @@ export default function ResearchPage() {
   );
 
   useEffect(() => {
-    // Initialize real-time subscription
+    // Initialize real-time subscription for updates
     const cleanup = () => {
       // Handle real-time updates
     }
