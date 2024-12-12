@@ -452,7 +452,7 @@ export const generateDetailedOutline = async (topic: string): Promise<string> =>
 
   const targetSections = Math.floor((minSections + maxSections) / 2);
 
-  const systemPrompt = `You are a research outline generator. Create a outline with a title and compressed cripitic prompt to generate academic research that meets these requirements:
+  const systemPrompt = `You are a research outline generator. Create a outline with a title and compress into the least tokens that captures the essence of the outline. Use cripitic prompt to generate academic research that meets these requirements:
 1. Generate EXACTLY ${targetSections} main sections (no more, no less)
 2. Start with abstract
 3. End with ${endSection}
@@ -463,7 +463,7 @@ ${requiresHypothesis ? '4. Include a clear hypothesis section\n5. Include method
 
   const prompt = `Generate a detailed research outline for: ${topic}
 
-Requirements:
+Requirements for promt instructions:
 - EXACTLY ${targetSections} main sections
 - Each section must be numbered (1., 2., etc.)
 - Start with abstract
