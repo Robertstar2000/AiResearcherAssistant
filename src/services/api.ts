@@ -368,68 +368,76 @@ export async function generateDetailedOutline(
   mode: string = 'basic',
   type: string = 'general'
 ): Promise<string> {
-  const systemPrompt = `You are a research outline generator. Generate a detailed outline for a ${mode} ${type} research paper.
+  // Define section count based on research mode
+  const sectionCounts = {
+    basic: { min: 5, max: 8 },
+    advanced: { min: 8, max: 12 },
+    technical: { min: 10, max: 15 },
+    'literature-review': { min: 12, max: 18 }
+  };
 
-Instructions for Outline Generation:
-1. Structure Requirements:
-   - Create a clear, hierarchical structure
-   - Use numbers for main sections (1., 2., etc.)
-   - Use letters for subsections (a., b., etc.)
-   - For basic mode: Include 5-7 main sections with 2-3 subsections each
-   - For advanced mode: Include 7-9 main sections with 3-4 subsections each
+  const { min, max } = sectionCounts[mode as keyof typeof sectionCounts] || sectionCounts.basic;
+
+  // Define research type requirements
+  const typeRequirements = {
+    general: 'Focus on providing a comprehensive overview with balanced coverage of all aspects.',
+    technical: 'Emphasize technical details, methodologies, and specific implementations.',
+    academic: 'Follow academic research standards with strong theoretical foundation and methodology.',
+    analysis: 'Focus on critical analysis, comparisons, and evaluations.',
+    review: 'Provide extensive literature review and synthesis of existing research.'
+  };
+
+  const requirement = typeRequirements[type as keyof typeof typeRequirements] || typeRequirements.general;
+
+  const systemPrompt = `You are an expert research outline generator. Create a detailed, well-structured outline for a ${mode} level research paper about "${topic}". 
+The outline should follow these requirements:
+
+1. Structure:
+   - Include ${min}-${max} main sections (numbered 1., 2., etc.)
+   - Each section must have descriptive bullet points explaining what content will be covered
+   - Maintain logical flow and progression of ideas
+   - Ensure comprehensive coverage of the topic
 
 2. Content Requirements:
-   - EVERY section and subsection MUST include a brief description (1-2 lines) of what it will cover
-   - Descriptions should be specific and actionable
-   - Ensure logical flow between sections
-   - Each section should clearly relate to the research topic
+   - ${requirement}
+   - Each section should build upon previous sections
+   - Include both theoretical and practical aspects where applicable
+   - Consider current research trends and developments
 
-3. Formatting Requirements:
-   - Main sections: "1. Section Title" followed by description on next line
-   - Subsections: "a. Subsection Title" followed by description on next line
-   - Indent subsections under their main section
-   - Leave a blank line between sections`;
+3. Format Requirements:
+   - Use numbers for main sections (1., 2., etc.)
+   - Use bullet points (•) for section descriptions
+   - Each section MUST have multiple descriptive bullet points
+   - Make descriptions specific and actionable for content generation
 
-  const prompt = `Generate a detailed outline for a ${mode} ${type} research paper about: ${topic}
+4. Special Considerations for ${mode} mode:
+   ${mode === 'basic' ? '- Focus on fundamental concepts and clear explanations\n   - Avoid overly technical language\n   - Emphasize practical applications' :
+     mode === 'advanced' ? '- Include detailed technical discussions\n   - Cover advanced concepts and methodologies\n   - Incorporate current research findings' :
+     mode === 'technical' ? '- Provide in-depth technical analysis\n   - Include specific methodologies and implementations\n   - Cover technical specifications and requirements' :
+     '- Comprehensive literature review\n   - Critical analysis of existing research\n   - Synthesis of different perspectives'}
 
-Requirements:
-1. Follow academic standards for a ${type} research paper
-2. Include all standard sections (Introduction, Methodology, Results, etc.)
-3. Each section and subsection MUST have a description of its content
-4. Basic mode: 5-7 main sections, 2-3 subsections each (total ~15-21 sections)
-5. Advanced mode: 7-9 main sections, 3-4 subsections each (total ~21-36 sections)
-6. Technical papers: Include methodology and implementation sections
-7. Literature reviews: Focus on analysis and synthesis sections
-
-Format Example:
-1. Introduction
-   [Brief description of what the introduction will cover]
-   
-   a. Background
-   [Specific description of the background subsection content]
-   
-   b. Research Objectives
-   [Clear description of what the objectives subsection will address]
-
-2. Methodology
-   [Overview of the methodology section's content]
-   ...`;
+Generate a detailed outline now, ensuring each section has clear, specific bullet points describing what content should be covered.`;
 
   try {
-    const response = await makeGroqApiCall(prompt, 2000, systemPrompt);
-    if (!response?.choices?.[0]?.message?.content) {
+    const response = await makeApiCall(
+      () => makeGroqApiCall(topic, GROQ_CONFIG.MAX_TOKENS, systemPrompt),
+      `Failed to generate outline for "${topic}"`,
+      0
+    );
+
+    const outline = response.choices[0].message.content.trim();
+    
+    // Validate outline format
+    if (!outline.match(/^\d+\./m)) {
       throw new ResearchException(
         ResearchError.GENERATION_ERROR,
-        'Failed to generate outline'
+        'Generated outline does not follow the required format'
       );
     }
 
-    return response.choices[0].message.content.trim();
+    return outline;
   } catch (error) {
-    handleApiError(
-      error,
-      'Failed to generate detailed outline'
-    );
+    console.error('Error in generateDetailedOutline:', error);
     throw error;
   }
 };
