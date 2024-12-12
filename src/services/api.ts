@@ -342,26 +342,51 @@ export async function generateDetailedOutline(
   type: string = 'general'
 ): Promise<string> {
   const systemPrompt = `You are a research outline generator. Generate a detailed outline for a ${mode} ${type} research paper.
-Instructions:
-- Create a clear, hierarchical structure
-- Use numbers for main sections (1., 2., etc.)
-- Use letters for subsections (a., b., etc.)
-- For basic mode: Include 5-7 main sections with 2-3 subsections each
-- For advanced mode: Include 7-9 main sections with 3-4 subsections each
-- Include brief descriptions of what each section should cover
-- Ensure logical flow between sections
-- Each section should be clearly related to the research topic`;
+
+Instructions for Outline Generation:
+1. Structure Requirements:
+   - Create a clear, hierarchical structure
+   - Use numbers for main sections (1., 2., etc.)
+   - Use letters for subsections (a., b., etc.)
+   - For basic mode: Include 5-7 main sections with 2-3 subsections each
+   - For advanced mode: Include 7-9 main sections with 3-4 subsections each
+
+2. Content Requirements:
+   - EVERY section and subsection MUST include a brief description (1-2 lines) of what it will cover
+   - Descriptions should be specific and actionable
+   - Ensure logical flow between sections
+   - Each section should clearly relate to the research topic
+
+3. Formatting Requirements:
+   - Main sections: "1. Section Title" followed by description on next line
+   - Subsections: "a. Subsection Title" followed by description on next line
+   - Indent subsections under their main section
+   - Leave a blank line between sections`;
 
   const prompt = `Generate a detailed outline for a ${mode} ${type} research paper about: ${topic}
 
-The outline should follow academic standards and be well-structured.
-Each section should include a brief description of its content requirements.
+Requirements:
+1. Follow academic standards for a ${type} research paper
+2. Include all standard sections (Introduction, Methodology, Results, etc.)
+3. Each section and subsection MUST have a description of its content
+4. Basic mode: 5-7 main sections, 2-3 subsections each (total ~15-21 sections)
+5. Advanced mode: 7-9 main sections, 3-4 subsections each (total ~21-36 sections)
+6. Technical papers: Include methodology and implementation sections
+7. Literature reviews: Focus on analysis and synthesis sections
 
-Section Requirements:
-- Basic mode: 5-7 main sections, 2-3 subsections each (total ~15-21 sections)
-- Advanced mode: 7-9 main sections, 3-4 subsections each (total ~21-36 sections)
-- Technical papers may require additional methodology and implementation sections
-- Literature reviews should focus on analysis and synthesis sections`;
+Format Example:
+1. Introduction
+   [Brief description of what the introduction will cover]
+   
+   a. Background
+   [Specific description of the background subsection content]
+   
+   b. Research Objectives
+   [Clear description of what the objectives subsection will address]
+
+2. Methodology
+   [Overview of the methodology section's content]
+   ...`;
 
   try {
     const response = await makeGroqApiCall(prompt, 2000, systemPrompt);

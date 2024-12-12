@@ -26,31 +26,52 @@ interface ResearchResult {
 export function parseDetailedOutline(outline: string): OutlineItem[] {
   const lines = outline.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   const items: OutlineItem[] = [];
+  let currentMainSection: OutlineItem | null = null;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const numberMatch = line.match(/^(\d+\.|[a-z]\.|[A-Z]\.|\d+\)|\-|\*)\s*/);
+    
+    // Skip empty lines and bracket content
+    if (line.length === 0 || line.startsWith('[') || line.endsWith(']')) {
+      continue;
+    }
+
+    // Match section numbers (1., 2., etc.) or subsection letters (a., b., etc.) or bullets (•, -, *)
+    const numberMatch = line.match(/^(\d+\.|[a-z]\.|[A-Z]\.|\•|\-|\*)\s*/);
     
     if (numberMatch) {
       const number = numberMatch[1];
       const title = line.substring(numberMatch[0].length).trim();
-      const level = number.match(/^\d+\./) ? 1 : 2;
+      const level = number.match(/^(\d+\.|[A-Z]\.)/) ? 1 : 2;
       const isSubsection = level > 1;
       
-      // Look for description in the next line
+      // Look for description in the next lines
       let description = '';
-      if (i + 1 < lines.length && !lines[i + 1].match(/^(\d+\.|[a-z]\.|[A-Z]\.|\d+\)|\-|\*)\s*/)) {
-        description = lines[i + 1].trim();
-        i++; // Skip the description line
+      let nextLine = i + 1 < lines.length ? lines[i + 1] : '';
+      
+      // Keep looking for description until we find another section or end
+      while (i + 1 < lines.length && 
+             !lines[i + 1].match(/^(\d+\.|[a-z]\.|[A-Z]\.|\•|\-|\*)\s*/) && 
+             !lines[i + 1].startsWith('[') &&
+             lines[i + 1].trim().length > 0) {
+        description += (description ? ' ' : '') + lines[i + 1].trim();
+        i++;
+        nextLine = i + 1 < lines.length ? lines[i + 1] : '';
       }
 
-      items.push({
+      const item: OutlineItem = {
         title,
         level,
         number: number.replace(/\.$/, ''),
         isSubsection,
-        description
-      });
+        description: description || '[Description to be added]' // Ensure every section has a description
+      };
+
+      if (!isSubsection) {
+        currentMainSection = item;
+      }
+
+      items.push(item);
     }
   }
 
