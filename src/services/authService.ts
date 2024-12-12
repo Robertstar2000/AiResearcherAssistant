@@ -157,7 +157,23 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
       );
     }
 
-    const metadata = data.user.user_metadata as UserMetadata;
+    // Get the user's metadata from their profile
+    const { data: userData, error: userError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', data.user.id)
+      .single();
+
+    if (userError) {
+      console.error('Error fetching user profile:', userError);
+    }
+
+    const metadata: UserMetadata = {
+      name: userData?.name || data.user.user_metadata?.name || '',
+      occupation: userData?.occupation || data.user.user_metadata?.occupation || '',
+      geolocation: userData?.geolocation || data.user.user_metadata?.geolocation || ''
+    };
+
     return createAuthUser(data.user, metadata);
   } catch (error) {
     throw new ResearchException(
