@@ -174,7 +174,9 @@ Requirements:
         const content = await generateSection(
           research.title,
           section.title,
-          section.isSubsection
+          section.description || '',
+          section.isSubsection,
+          parsedOutline
         );
         
         // Update the generated content with the new section

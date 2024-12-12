@@ -1,14 +1,6 @@
-import { generateDetailedOutline, generateSection, generateReferences } from './api';
+import { generateDetailedOutline, generateSection, generateReferences, OutlineItem } from './api';
 import { ResearchError, ResearchException } from './researchErrors';
 import { ResearchMode, ResearchType } from '../store/slices/researchSlice';
-
-interface OutlineItem {
-  title: string;
-  level: number;
-  number: string;
-  isSubsection: boolean;
-  description?: string;
-}
 
 interface ResearchSection {
   title: string;
@@ -56,15 +48,16 @@ export function parseDetailedOutline(outline: string): OutlineItem[] {
         i++;
       }
 
-      const item: OutlineItem = {
-        title,
-        level,
-        number: number.replace(/\.$/, ''),
-        isSubsection,
-        description: description || '[Description to be added]' // Ensure every section has a description
-      };
+      // Ensure description is never undefined
+      const finalDescription = description || '[Description to be added]';
 
-      items.push(item);
+      items.push({
+        title,
+        number: number.replace(/\.$/, ''),
+        description: finalDescription,
+        isSubsection,
+        level
+      });
     }
   }
 
@@ -103,23 +96,19 @@ export async function generateResearch(
     let currentProgress = 20;
     const progressPerSection = 60 / outlineItems.length;
     const maxConsecutiveErrors = 3;
-    console.log('Starting section generation with outline items:', outlineItems);
 
     for (let i = 0; i < outlineItems.length; i++) {
       const item = outlineItems[i];
       
       try {
-        console.log(`Attempting to generate section ${i + 1}: ${item.title}`);
-        const sectionType = item.isSubsection ? 'subsection' : 'section';
         progressCallback(
           currentProgress,
-          `[${i + 1}/${outlineItems.length}] Generating ${sectionType}: "${item.title}"`
+          `[${i + 1}/${outlineItems.length}] Generating section: "${item.title}"`
         );
 
         // Add base delay between sections to avoid rate limits
         if (i > 0) {
           const currentDelay = baseDelay * Math.pow(1.5, rateLimitHits);
-          console.log(`Applying delay of ${currentDelay/1000} seconds before next section`);
           progressCallback(
             currentProgress,
             `[${i + 1}/${outlineItems.length}] Processing ${currentDelay/1000}s before generating "${item.title}"...`
@@ -131,13 +120,12 @@ export async function generateResearch(
           topic,
           item.title,
           item.description || '',
-          item.isSubsection,
+          false,
           outlineItems
         );
-        console.log(`Successfully generated section: ${item.title}`);
         
         const wordCount = content.split(/\s+/).length;
-        const minWords = item.isSubsection ? 2000 : 3000;
+        const minWords = 3000;
         
         let warning: string | undefined;
         if (wordCount < minWords) {

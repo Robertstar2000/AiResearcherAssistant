@@ -67,10 +67,12 @@ interface SectionRef {
   retryCount: number;
 }
 
-interface OutlineItem {
+export interface OutlineItem {
   number: string;
   title: string;
   description: string;
+  isSubsection: boolean;
+  level: number;
 }
 
 // Helper Functions
