@@ -362,6 +362,92 @@ Requirements:
     </Box>
   );
 
+  const renderOutline = () => {
+    if (!parsedOutline.length) return null;
+    
+    return (
+      <Paper 
+        elevation={0} 
+        sx={{ 
+          p: 2, 
+          bgcolor: 'grey.50',
+          maxHeight: '400px',
+          overflow: 'auto',
+          '&::-webkit-scrollbar': {
+            width: '8px',
+          },
+          '&::-webkit-scrollbar-track': {
+            backgroundColor: 'grey.100',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            backgroundColor: 'grey.400',
+            borderRadius: '4px',
+          },
+        }}
+      >
+        {parsedOutline.map((item, index) => (
+          <Box key={index} sx={{ ml: item.isSubsection ? 4 : 0, mb: 1 }}>
+            <Typography variant="body1" style={{ fontWeight: 'bold', marginTop: '16px' }}>
+              {item.isSubsection ? '•' : `${index + 1}.`} {item.title}
+            </Typography>
+            {item.description && (
+              <div style={{ marginLeft: '20px', whiteSpace: 'pre-line' }}>
+                {item.description}
+              </div>
+            )}
+          </Box>
+        ))}
+        <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'grey.300' }}>
+          <Typography variant="body2" color="textSecondary">
+            Total word count in outline: {outlineWordCount}
+          </Typography>
+        </Box>
+      </Paper>
+    );
+  };
+
+  const renderGeneratedContent = () => {
+    if (!generatedSections.length) return null;
+
+    return (
+      <Paper 
+        elevation={0} 
+        sx={{ 
+          p: 2, 
+          bgcolor: 'grey.50',
+          maxHeight: '600px',
+          overflow: 'auto',
+          '&::-webkit-scrollbar': {
+            width: '8px',
+          },
+          '&::-webkit-scrollbar-track': {
+            backgroundColor: 'grey.100',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            backgroundColor: 'grey.400',
+            borderRadius: '4px',
+          },
+        }}
+      >
+        {generatedSections.map((section, index) => (
+          <Box key={index} sx={{ mb: 3 }}>
+            <Typography variant="h6" sx={{ ml: section.isSubsection ? 4 : 0, mb: 1 }}>
+              {section.isSubsection ? '•' : `${index + 1}.`} {section.title}
+            </Typography>
+            {section.description && (
+              <div style={{ marginLeft: '20px', whiteSpace: 'pre-line' }}>
+                {section.description}
+              </div>
+            )}
+            <Typography sx={{ ml: section.isSubsection ? 4 : 0 }}>
+              {section.content}
+            </Typography>
+          </Box>
+        ))}
+      </Paper>
+    );
+  };
+
   useEffect(() => {
     // Initialize real-time subscription for updates
     const cleanup = () => {
@@ -526,38 +612,7 @@ Requirements:
                 <Typography variant="h6" gutterBottom>
                   Research Outline
                 </Typography>
-                <Paper 
-                  elevation={0} 
-                  sx={{ 
-                    p: 2, 
-                    bgcolor: 'grey.50',
-                    maxHeight: '400px',
-                    overflow: 'auto',
-                    '&::-webkit-scrollbar': {
-                      width: '8px',
-                    },
-                    '&::-webkit-scrollbar-track': {
-                      backgroundColor: 'grey.100',
-                    },
-                    '&::-webkit-scrollbar-thumb': {
-                      backgroundColor: 'grey.400',
-                      borderRadius: '4px',
-                    },
-                  }}
-                >
-                  {parsedOutline.map((item, index) => (
-                    <Box key={index} sx={{ ml: item.isSubsection ? 4 : 0, mb: 1 }}>
-                      <Typography>
-                        {item.isSubsection ? '•' : `${index + 1}.`} {item.title}
-                      </Typography>
-                    </Box>
-                  ))}
-                  <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'grey.300' }}>
-                    <Typography variant="body2" color="textSecondary">
-                      Total word count in outline: {outlineWordCount}
-                    </Typography>
-                  </Box>
-                </Paper>
+                {renderOutline()}
               </Box>
             )}
 
@@ -566,36 +621,7 @@ Requirements:
                 <Typography variant="h6" gutterBottom>
                   Generated Content
                 </Typography>
-                <Paper 
-                  elevation={0} 
-                  sx={{ 
-                    p: 2, 
-                    bgcolor: 'grey.50',
-                    maxHeight: '600px',
-                    overflow: 'auto',
-                    '&::-webkit-scrollbar': {
-                      width: '8px',
-                    },
-                    '&::-webkit-scrollbar-track': {
-                      backgroundColor: 'grey.100',
-                    },
-                    '&::-webkit-scrollbar-thumb': {
-                      backgroundColor: 'grey.400',
-                      borderRadius: '4px',
-                    },
-                  }}
-                >
-                  {generatedSections.map((section, index) => (
-                    <Box key={index} sx={{ mb: 3 }}>
-                      <Typography variant="h6" sx={{ ml: section.isSubsection ? 4 : 0, mb: 1 }}>
-                        {section.isSubsection ? '•' : `${index + 1}.`} {section.title}
-                      </Typography>
-                      <Typography sx={{ ml: section.isSubsection ? 4 : 0 }}>
-                        {section.content}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Paper>
+                {renderGeneratedContent()}
               </Box>
             )}
 

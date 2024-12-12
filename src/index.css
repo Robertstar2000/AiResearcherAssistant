@@ -83,6 +83,59 @@ body {
   padding: 0 var(--spacing-unit);
 }
 
+.outline-container {
+  padding: 16px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.outline-section {
+  margin-bottom: 16px;
+}
+
+.section-description {
+  margin-left: 20px;
+  margin-top: 8px;
+  color: #666;
+  white-space: pre-line;
+}
+
+.generated-content-container {
+  padding: 16px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.generated-section {
+  margin-bottom: 24px;
+}
+
+/* Scrollbar styling */
+.outline-container::-webkit-scrollbar,
+.generated-content-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.outline-container::-webkit-scrollbar-track,
+.generated-content-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.outline-container::-webkit-scrollbar-thumb,
+.generated-content-container::-webkit-scrollbar-thumb {
+  background: #bbb;
+  border-radius: 4px;
+}
+
+.outline-container::-webkit-scrollbar-thumb:hover,
+.generated-content-container::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; }
