@@ -143,6 +143,7 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
     });
 
     if (error) {
+      console.error('Authentication error:', error);
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
         `Authentication failed: ${error.message}`,
@@ -157,25 +158,36 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
       );
     }
 
-    // Get the user's metadata from their profile
-    const { data: userData, error: userError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', data.user.id)
-      .single();
-
-    if (userError) {
-      console.error('Error fetching user profile:', userError);
-    }
-
-    const metadata: UserMetadata = {
-      name: userData?.name || data.user.user_metadata?.name || '',
-      occupation: userData?.occupation || data.user.user_metadata?.occupation || '',
-      geolocation: userData?.geolocation || data.user.user_metadata?.geolocation || ''
+    // First try to get metadata from user's auth data
+    let metadata: UserMetadata = {
+      name: data.user.user_metadata?.name || '',
+      occupation: data.user.user_metadata?.occupation || '',
+      geolocation: data.user.user_metadata?.geolocation || ''
     };
+
+    try {
+      // Then try to get additional data from profiles table
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('name, occupation, geolocation')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profile && !profileError) {
+        metadata = {
+          name: profile.name || metadata.name,
+          occupation: profile.occupation || metadata.occupation,
+          geolocation: profile.geolocation || metadata.geolocation
+        };
+      }
+    } catch (profileError) {
+      console.error('Error fetching user profile:', profileError);
+      // Don't throw here, just continue with metadata from auth
+    }
 
     return createAuthUser(data.user, metadata);
   } catch (error) {
+    console.error('Authentication error:', error);
     throw new ResearchException(
       ResearchError.AUTH_ERROR,
       error instanceof Error ? error.message : 'Authentication failed',

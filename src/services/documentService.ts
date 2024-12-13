@@ -1,5 +1,5 @@
 import { Document, Paragraph, Packer, HeadingLevel, AlignmentType } from 'docx';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { ResearchSection, SubSection } from '../types';
 
 export interface DocumentMetadata {
@@ -160,78 +160,87 @@ export const generatePdfDocument = async (
     const markdown = convertToMarkdown(sections);
     const pdf = await PDFDocument.create();
     
+    // Embed a standard font
+    const font = await pdf.embedFont(StandardFonts.TimesRoman);
+    const boldFont = await pdf.embedFont(StandardFonts.TimesRomanBold);
+    
     // Title Page
     let currentPage = pdf.addPage();
     const { width, height } = currentPage.getSize();
     const fontSize = 12;
     const titleSize = 24;
-    const headerSize = 14;
-    let currentY = height - 200; // Start lower for title page
+    const headerSize = 16;
+    let currentY = height - 200;
 
     // Draw title centered
-    const titleWidth = titleSize * metadata.title.length * 0.6; // Approximate width
-    currentPage.drawText(metadata.title, {
+    const title = metadata.title;
+    const titleWidth = boldFont.widthOfTextAtSize(title, titleSize);
+    currentPage.drawText(title, {
       x: (width - titleWidth) / 2,
       y: currentY,
-      size: titleSize,
-      maxWidth: width - 100
+      font: boldFont,
+      size: titleSize
     });
-    currentY -= 50;
+    currentY -= 60;
 
     // Draw author centered
     const authorText = `By ${metadata.author}`;
-    const authorWidth = (fontSize + 2) * authorText.length * 0.6;
+    const authorWidth = font.widthOfTextAtSize(authorText, fontSize + 2);
     currentPage.drawText(authorText, {
       x: (width - authorWidth) / 2,
       y: currentY,
-      size: fontSize + 2,
-      maxWidth: width - 100
+      font: font,
+      size: fontSize + 2
     });
-    currentY -= 30;
+    currentY -= 40;
 
     // Draw date centered
     const dateText = metadata.created.toLocaleDateString();
-    const dateWidth = fontSize * dateText.length * 0.6;
+    const dateWidth = font.widthOfTextAtSize(dateText, fontSize);
     currentPage.drawText(dateText, {
       x: (width - dateWidth) / 2,
       y: currentY,
-      size: fontSize,
-      maxWidth: width - 100
+      font: font,
+      size: fontSize
     });
 
     // Table of Contents Page
     currentPage = pdf.addPage();
-    currentY = height - 50;
+    currentY = height - 100;
 
     // Draw Table of Contents header
-    currentPage.drawText('Table of Contents', {
+    const tocTitle = 'Table of Contents';
+    currentPage.drawText(tocTitle, {
       x: 50,
       y: currentY,
-      size: headerSize + 2,
-      maxWidth: width - 100
+      font: boldFont,
+      size: headerSize
     });
-    currentY -= 40;
+    currentY -= 50;
 
     // Draw table of contents entries
-    sections.forEach((section, index) => {
-      if (currentY < 50) {
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
+      const entry = `${i + 1}. ${section.title}`;
+      const entryHeight = font.heightAtSize(fontSize);
+      
+      if (currentY - entryHeight < 50) {
         currentPage = pdf.addPage();
-        currentY = height - 50;
+        currentY = height - 100;
       }
 
-      currentPage.drawText(`${index + 1}. ${section.title}`, {
+      currentPage.drawText(entry, {
         x: 70,
         y: currentY,
-        size: fontSize,
-        maxWidth: width - 140
+        font: font,
+        size: fontSize
       });
-      currentY -= 25;
-    });
-    currentY -= 20;
+      currentY -= 30;
+    }
 
     // Content pages
     currentPage = pdf.addPage();
-    currentY = height - 50;
+    currentY = height - 100;
 
     // Draw content
     const lines = markdown.split('\n');
@@ -239,53 +248,70 @@ export const generatePdfDocument = async (
       if (line.trim()) {
         const isMainSection = line.match(/^\d+\.\s+/);
         const isSubSection = line.match(/^[a-z]\.\s+/);
-        const lineSize = isMainSection ? headerSize : (isSubSection ? fontSize + 1 : fontSize);
+        const lineFont = isMainSection ? boldFont : font;
+        const lineSize = isMainSection ? headerSize : (isSubSection ? fontSize + 2 : fontSize);
         const xOffset = isSubSection ? 70 : 50;
+        const lineHeight = lineFont.heightAtSize(lineSize);
+        const wrappedText = wrapText(line, lineFont, lineSize, width - (xOffset + 100));
 
-        if (currentY < 50) {
+        // Check if we need a new page
+        if (currentY - (lineHeight * wrappedText.length) < 50) {
           currentPage = pdf.addPage();
-          currentY = height - 50;
+          currentY = height - 100;
         }
 
-        currentPage.drawText(line, {
-          x: xOffset,
-          y: currentY,
-          size: lineSize,
-          maxWidth: width - (xOffset + 50),
-        });
-        currentY -= 20;
+        // Draw each line of wrapped text
+        for (const textLine of wrappedText) {
+          currentPage.drawText(textLine, {
+            x: xOffset,
+            y: currentY,
+            font: lineFont,
+            size: lineSize
+          });
+          currentY -= lineHeight * 1.2; // Add 20% extra spacing between lines
+        }
+        
+        // Add extra spacing after sections
+        if (isMainSection) {
+          currentY -= lineHeight;
+        }
       }
     }
 
     // Draw references
     if (references.length > 0) {
-      if (currentY < 100) {
+      if (currentY < 200) {
         currentPage = pdf.addPage();
-        currentY = height - 50;
+        currentY = height - 100;
       }
 
-      currentY -= 20;
-      currentPage.drawText('References', {
+      const refsTitle = 'References';
+      currentPage.drawText(refsTitle, {
         x: 50,
         y: currentY,
-        size: headerSize,
-        maxWidth: width - 100,
+        font: boldFont,
+        size: headerSize
       });
-      currentY -= 30;
+      currentY -= 50;
 
       for (const ref of references) {
-        if (currentY < 50) {
+        const refHeight = font.heightAtSize(fontSize);
+        const wrappedRef = wrapText(ref, font, fontSize, width - 160);
+
+        if (currentY - (refHeight * wrappedRef.length) < 50) {
           currentPage = pdf.addPage();
-          currentY = height - 50;
+          currentY = height - 100;
         }
 
-        currentPage.drawText(ref, {
-          x: 70,
-          y: currentY,
-          size: fontSize,
-          maxWidth: width - 140,
-        });
-        currentY -= 20;
+        for (const refLine of wrappedRef) {
+          currentPage.drawText(refLine, {
+            x: 70,
+            y: currentY,
+            font: font,
+            size: fontSize
+          });
+          currentY -= refHeight * 1.2;
+        }
       }
     }
 
@@ -296,6 +322,28 @@ export const generatePdfDocument = async (
     throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate PDF document');
   }
 };
+
+// Helper function to wrap text
+function wrapText(text: string, font: any, fontSize: number, maxWidth: number): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = words[0];
+
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i];
+    const width = font.widthOfTextAtSize(`${currentLine} ${word}`, fontSize);
+    
+    if (width < maxWidth) {
+      currentLine += ' ' + word;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+  
+  lines.push(currentLine);
+  return lines;
+}
 
 export const downloadDocument = (blob: Blob, filename: string): void => {
   try {
