@@ -73,6 +73,7 @@ export interface OutlineItem {
   description: string;
   isSubsection: boolean;
   level: number;
+  keywords?: string[];
 }
 
 // Helper Functions
@@ -147,7 +148,10 @@ function handleApiError(error: unknown, message: string): never {
   if (error instanceof ResearchException) {
     throw error;
   }
-  throw new ResearchException(ResearchError.API_ERROR, message);
+  throw new ResearchException(
+    ResearchError.API_ERROR,
+    message
+  );
 };
 
 async function makeApiCall<T>(
@@ -436,6 +440,7 @@ The outline should follow these requirements:
    - Each section MUST have multiple descriptive bullet points
    - Make descriptions specific and actionable for content generation
    - IMPORTANT: Each section MUST start with a number followed by a dot (e.g., "1.", "2.", etc.)
+   - Each section MUST start on a new line
 
 4. Special Considerations for ${mode} mode:
    ${mode === 'basic' ? '- Focus on fundamental concepts and clear explanations\n   - Avoid overly technical language\n   - Emphasize practical applications' :
@@ -443,7 +448,7 @@ The outline should follow these requirements:
      mode === 'technical' ? '- Provide in-depth technical analysis\n   - Include specific methodologies and implementations\n   - Cover technical specifications and requirements' :
      '- Comprehensive literature review\n   - Critical analysis of existing research\n   - Synthesis of different perspectives'}
 
-IMPORTANT: Your outline MUST contain at least ${min} and at most ${max} numbered sections. Each section MUST start with a number followed by a dot (e.g., "1.", "2.", etc.).
+IMPORTANT: Your outline MUST contain at least ${min} and at most ${max} numbered sections. Each section MUST start with a number followed by a dot (e.g., "1.", "2.", etc.) and MUST start on a new line.
 
 Generate a detailed outline now, ensuring each section has clear, specific bullet points describing what content should be covered.`;
 
@@ -456,23 +461,26 @@ Generate a detailed outline now, ensuring each section has clear, specific bulle
 
     const outline = response.choices[0].message.content.trim();
     
-    // Count the number of sections
-    const sectionMatches = outline.match(/^\d+\./gm);
-    const sectionCount = sectionMatches ? sectionMatches.length : 0;
+    // Split into lines and count sections that start with a number and dot
+    const lines = outline.split('\n');
+    const sectionCount = lines.filter((line: string) => /^\d+\./.test(line.trim())).length;
 
     // Validate section count
     if (sectionCount < min || sectionCount > max) {
+      console.log('Generated outline:', outline); // For debugging
+      console.log(`Found ${sectionCount} sections in outline`); // For debugging
       throw new ResearchException(
         ResearchError.GENERATION_ERROR,
         `Generated outline has ${sectionCount} sections, but should have between ${min} and ${max} sections. Regenerating...`
       );
     }
 
-    // Validate format
-    if (!outline.match(/^\d+\./m)) {
+    // Validate format of each section
+    const hasValidSections = lines.some((line: string) => /^\d+\./.test(line.trim()));
+    if (!hasValidSections) {
       throw new ResearchException(
         ResearchError.GENERATION_ERROR,
-        'Generated outline does not follow the required format'
+        'Generated outline does not follow the required format. Each section must start with a number followed by a dot.'
       );
     }
 

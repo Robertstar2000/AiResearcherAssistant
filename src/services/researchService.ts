@@ -11,74 +11,124 @@ interface ResearchSection {
 
 interface ResearchResult {
   sections: ResearchSection[];
-  references: string[];
   outline: string;
 }
 
-export function parseDetailedOutline(outline: string): OutlineItem[] {
-  const lines = outline.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+export async function parseDetailedOutline(
+  outlineText: string,
+  mode: string = 'basic',
+  type: string = 'general'
+): Promise<OutlineItem[]> {
+  const lines = outlineText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   const items: OutlineItem[] = [];
   let currentDescription: string[] = [];
+  let currentItem: OutlineItem | null = null;
+  let currentLevel = 0;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    
-    // Skip empty lines, bracket content, and the "Research Outline" header
-    if (line.length === 0 || 
-        line.startsWith('[') || 
-        line.endsWith(']') ||
-        line.toLowerCase().includes('research outline')) {
-      continue;
-    }
-
-    // Match numbered sections (e.g., "1.", "12.")
-    const sectionMatch = line.match(/^(\d+)\.\s+(.+)$/);
-    
+  for (const line of lines) {
+    // Check for section headers (numbered or lettered)
+    const sectionMatch = line.match(/^(\d+|[a-z])\.\s+(.+)/i);
     if (sectionMatch) {
-      // If we were collecting a description, add it to the previous section
-      if (currentDescription.length > 0 && items.length > 0) {
-        items[items.length - 1].description = currentDescription.join('\n');
+      // Save previous item if exists
+      if (currentItem) {
+        currentItem.description = currentDescription.join('\n');
+        items.push(currentItem);
         currentDescription = [];
       }
 
-      const [, number, title] = sectionMatch;
-      
-      items.push({
-        title: title.trim(),
-        number,
-        description: '', // Will be populated as we process subsequent lines
-        isSubsection: false,
-        level: 1
-      });
+      // Create new item
+      const isSubsection = /^[a-z]/i.test(sectionMatch[1]);
+      currentItem = {
+        number: sectionMatch[1],
+        title: sectionMatch[2],
+        description: '',
+        isSubsection,
+        level: isSubsection ? currentLevel + 1 : 1
+      };
+
+      if (!isSubsection) {
+        currentLevel = 1;
+      }
+    } else if (line.startsWith('•') || line.startsWith('-')) {
+      // Add bullet points to description
+      if (currentItem) {
+        currentDescription.push(line);
+      }
     } else {
-      // If line starts with bullet points or is indented, it's part of the current section's description
-      if (items.length > 0) {
+      // Add other lines to description
+      if (currentItem) {
         currentDescription.push(line);
       }
     }
   }
 
-  // Don't forget to add the description for the last section
-  if (currentDescription.length > 0 && items.length > 0) {
-    items[items.length - 1].description = currentDescription.join('\n');
+  // Add final item
+  if (currentItem) {
+    currentItem.description = currentDescription.join('\n');
+    items.push(currentItem);
   }
 
   // Ensure every section has at least a minimal description
-  return items.map(item => ({
+  const processedItems = items.map(item => ({
     ...item,
     description: item.description || '[Description to be added]'
   }));
+
+  // Get section count requirements
+  const sectionCounts = {
+    basic: {
+      general: { min: 5, max: 7 },
+      technical: { min: 6, max: 8 },
+      academic: { min: 7, max: 9 },
+      analysis: { min: 6, max: 8 },
+      review: { min: 7, max: 9 }
+    },
+    advanced: {
+      general: { min: 8, max: 10 },
+      technical: { min: 9, max: 12 },
+      academic: { min: 10, max: 13 },
+      analysis: { min: 9, max: 11 },
+      review: { min: 10, max: 12 }
+    },
+    technical: {
+      general: { min: 10, max: 12 },
+      technical: { min: 12, max: 15 },
+      academic: { min: 11, max: 14 },
+      analysis: { min: 10, max: 13 },
+      review: { min: 11, max: 14 }
+    },
+    'literature-review': {
+      general: { min: 12, max: 15 },
+      technical: { min: 13, max: 16 },
+      academic: { min: 14, max: 18 },
+      analysis: { min: 13, max: 16 },
+      review: { min: 15, max: 20 }
+    }
+  };
+
+  const { min, max } = sectionCounts[mode as keyof typeof sectionCounts]?.[type as keyof (typeof sectionCounts)['basic']] 
+    || sectionCounts.basic.general;
+
+  // Count top-level sections (not subsections)
+  const topLevelSections = processedItems.filter(item => !item.isSubsection).length;
+
+  // Validate section count
+  if (topLevelSections < min || topLevelSections > max) {
+    console.log(`Found ${topLevelSections} top-level sections, expected ${min}-${max}`);
+    throw new Error(`Generated outline has ${topLevelSections} sections, but should have between ${min} and ${max} sections. Please regenerate.`);
+  }
+
+  return processedItems;
 }
 
 export async function generateResearch(
   topic: string,
-  mode: ResearchMode,
-  type: ResearchType,
+  mode: string = 'basic',
+  type: string = 'general',
   progressCallback: (progress: number, message: string) => void
 ): Promise<ResearchResult> {
   try {
     let sections: ResearchSection[] = [];
-    let references: string[] = [];
     let outline: string = '';
     let consecutiveErrors = 0;
     let rateLimitHits = 0;
@@ -93,7 +143,7 @@ export async function generateResearch(
 
     // Parse outline into sections
     progressCallback(20, 'Analyzing and structuring research outline...');
-    const outlineItems = parseDetailedOutline(outline);
+    const outlineItems = await parseDetailedOutline(outline, mode, type);
     if (!outlineItems.length) {
       throw new ResearchException(ResearchError.PARSING_ERROR, 'Failed to parse outline');
     }
@@ -190,18 +240,16 @@ export async function generateResearch(
     progressCallback(80, 'Generating references...');
     try {
       const referencesContent = await generateReferences(topic);
-      references = referencesContent.split('\n').filter(ref => ref.trim().length > 0);
+      const references = referencesContent.split('\n').filter(ref => ref.trim().length > 0);
       if (!references || !references.length) {
         console.warn('No references generated');
-        references = [];
       }
     } catch (error) {
       console.error('Error generating references:', error);
-      references = [];
     }
 
     progressCallback(100, 'Research generation complete!');
-    return { sections, references, outline };
+    return { sections, outline };
   } catch (error) {
     console.error('Error in generateResearch:', error);
     throw error;
