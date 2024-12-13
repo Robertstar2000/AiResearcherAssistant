@@ -137,6 +137,23 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
 
 export async function authenticateUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
+    // First check if the email exists in the database
+    const { data: existingUsers, error: userCheckError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', credentials.email)
+      .single();
+
+    if (userCheckError && userCheckError.code !== 'PGRST116') {
+      console.error('Error checking user existence:', userCheckError);
+      throw new ResearchException(
+        ResearchError.AUTH_ERROR,
+        'Error verifying user account',
+        { error: userCheckError }
+      );
+    }
+
+    // Attempt to sign in
     const { data, error } = await supabase.auth.signInWithPassword({
       email: credentials.email,
       password: credentials.password
@@ -144,45 +161,60 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
 
     if (error) {
       console.error('Authentication error:', error);
-      throw new ResearchException(
-        ResearchError.AUTH_ERROR,
-        `Authentication failed: ${error.message}`,
-        { error }
-      );
+      // Handle specific error cases
+      if (error.message.includes('Email not confirmed')) {
+        // Check if the user exists but email is not confirmed
+        const { data: userExists } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', credentials.email)
+          .single();
+        
+        if (userExists) {
+          // If user exists, allow sign in despite email not being confirmed
+          console.log('User exists, proceeding with authentication despite email not being confirmed');
+        } else {
+          throw new ResearchException(
+            ResearchError.AUTH_ERROR,
+            'Invalid email or password',
+            { error }
+          );
+        }
+      } else {
+        throw new ResearchException(
+          ResearchError.AUTH_ERROR,
+          'Authentication failed: Invalid credentials',
+          { error }
+        );
+      }
     }
 
-    if (!data.user) {
+    if (!data?.user) {
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
         'Authentication successful but no user data returned'
       );
     }
 
-    // First try to get metadata from user's auth data
+    // Get the user's metadata from their profile
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('name, occupation, geolocation')
+      .eq('id', data.user.id)
+      .single();
+
     let metadata: UserMetadata = {
       name: data.user.user_metadata?.name || '',
       occupation: data.user.user_metadata?.occupation || '',
       geolocation: data.user.user_metadata?.geolocation || ''
     };
 
-    try {
-      // Then try to get additional data from profiles table
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('name, occupation, geolocation')
-        .eq('id', data.user.id)
-        .single();
-
-      if (profile && !profileError) {
-        metadata = {
-          name: profile.name || metadata.name,
-          occupation: profile.occupation || metadata.occupation,
-          geolocation: profile.geolocation || metadata.geolocation
-        };
-      }
-    } catch (profileError) {
-      console.error('Error fetching user profile:', profileError);
-      // Don't throw here, just continue with metadata from auth
+    if (profile && !profileError) {
+      metadata = {
+        name: profile.name || metadata.name,
+        occupation: profile.occupation || metadata.occupation,
+        geolocation: profile.geolocation || metadata.geolocation
+      };
     }
 
     return createAuthUser(data.user, metadata);

@@ -4,19 +4,21 @@ import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  // Load env file based on `mode` in the current working directory.
-  // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
   const env = loadEnv(mode, process.cwd(), '')
   
   console.log('Vite Environment Variables:')
   console.log('VITE_SUPABASE_URL:', env.VITE_SUPABASE_URL ? 'exists' : 'missing')
   console.log('VITE_SUPABASE_KEY:', env.VITE_SUPABASE_KEY ? 'exists' : 'missing')
+  console.log('VITE_GROQ_API_KEY:', env.VITE_GROQ_API_KEY ? 'exists' : 'missing')
 
   return {
     define: {
-      'process.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
-      'process.env.VITE_SUPABASE_KEY': JSON.stringify(env.VITE_SUPABASE_KEY),
-      'process.env.VITE_GROQ_API_KEY': JSON.stringify(env.VITE_GROQ_API_KEY)
+      'process.env': {
+        VITE_SUPABASE_URL: JSON.stringify(env.VITE_SUPABASE_URL),
+        VITE_SUPABASE_KEY: JSON.stringify(env.VITE_SUPABASE_KEY),
+        VITE_GROQ_API_KEY: JSON.stringify(env.VITE_GROQ_API_KEY),
+        NODE_ENV: JSON.stringify(mode)
+      }
     },
     plugins: [react()],
     base: '/',
@@ -38,7 +40,14 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 3000,
-      host: true
+      host: true,
+      proxy: {
+        '/api': {
+          target: 'https://api.groq.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api/, '')
+        }
+      }
     },
     preview: {
       port: 3000
@@ -49,7 +58,7 @@ export default defineConfig(({ mode }) => {
       }
     },
     esbuild: {
-      logOverride: { 'this-is-undefined-in-esm': 'silent' }
+      jsxInject: `import React from 'react'`
     }
   }
 })

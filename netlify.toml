@@ -9,11 +9,25 @@
   CI = "false"
   NETLIFY_USE_YARN = "false"
 
+[[headers]]
+  for = "/*"
+    [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Origin, X-Requested-With, Content-Type, Accept"
+
 [dev]
   command = "npm run dev"
   port = 3000
   publish = "dist"
   framework = "vite"
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://api.groq.com/openai/v1/chat/completions/:splat"
+  status = 200
+  force = true
+  headers = {Access-Control-Allow-Origin = "*"}
 
 [[redirects]]
   from = "/*"
