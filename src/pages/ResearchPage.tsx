@@ -86,8 +86,8 @@ export default function ResearchPage() {
       [ResearchType.Experiment]: { min: 8, max: 12 }
     },
     [ResearchMode.Advanced]: {
-      [ResearchType.General]: { min: 15, max: 20 },
-      [ResearchType.Literature]: { min: 15, max: 22 },
+      [ResearchType.General]: { min: 22, max: 28 },
+      [ResearchType.Literature]: { min: 25, max: 30 },
       [ResearchType.Experiment]: { min: 18, max: 22 }
     },
     [ResearchMode.Article]: {
@@ -188,14 +188,6 @@ Requirements:
       setProgressState({ progress: 30, message: 'Processing outline...' });
       const parsedOutline = await parseDetailedOutline(outline, research.mode, research.type);
       
-      // If parsing returns empty array, regenerate outline
-      if (!parsedOutline.length) {
-        console.log('Invalid section count, regenerating outline...');
-        setProgressState({ progress: 10, message: 'Regenerating outline...' });
-        handleGenerateOutline();
-        return;
-      }
-
       setParsedOutline(parsedOutline);
       setOutlineWordCount(calculateOutlineWordCount(parsedOutline));
       setProgressState({ progress: 100, message: 'Outline generation complete!' });
