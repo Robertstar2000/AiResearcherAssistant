@@ -383,7 +383,7 @@ export async function generateDetailedOutline(
   const min = rangeMatch ? parseInt(rangeMatch[1]) : 3;
   const max = rangeMatch ? parseInt(rangeMatch[2]) : 25;
 
-  const prompt = `Create a detailed research outline for the following topic. The outline MUST contain between ${min} and ${max} main sections, no more and no less:
+  const prompt = `Create a detailed ${type} research outline for the following topic. The outline MUST contain between ${min} and ${max} main sections, no more and no less:
 
 Topic: "${topic}"
 
@@ -394,7 +394,7 @@ Requirements:
 4. Maintain logical flow between sections
 5. Ensure comprehensive topic coverage`;
 
-  const systemPrompt = `You are an expert research outline generator. Create a detailed, well-structured outline for a ${mode} level research paper.
+  const systemPrompt = `You are an expert research outline generator. Create a detailed, well-structured outline for a ${mode} level ${type} research paper.
 
 IMPORTANT SECTION COUNT REQUIREMENT:
 - You MUST generate exactly between ${min} and ${max} main sections
