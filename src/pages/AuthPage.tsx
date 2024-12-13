@@ -45,6 +45,7 @@ export default function AuthPage() {
   const [occupation, setOccupation] = useState('')
   const [location, setLocation] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
   
   const dispatch = useDispatch()
   const navigate = useNavigate()
@@ -58,11 +59,14 @@ export default function AuthPage() {
     event.preventDefault()
     setError(null)
 
+    if (isLoading) return;
+
     try {
       if (!email || !password || !userName) {
         throw new Error('Please fill in all required fields')
       }
 
+      setIsLoading(true)
       const user = await createUser({
         email,
         password,
@@ -77,6 +81,8 @@ export default function AuthPage() {
       navigate('/research')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create account')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -180,18 +186,17 @@ export default function AuthPage() {
               type="submit"
               fullWidth
               variant="contained"
-              color="primary"
-              size="large"
-              sx={{ 
-                mt: 2,
+              disabled={isLoading}
+              sx={{
+                mt: 3,
                 mb: 2,
-                background: 'linear-gradient(45deg, #FF4081 30%, #FF8E53 90%)',
+                background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
                 '&:hover': {
-                  background: 'linear-gradient(45deg, #FF4081 10%, #FF8E53 70%)',
+                  background: 'linear-gradient(45deg, #1976D2 30%, #00BCD4 90%)',
                 }
               }}
             >
-              Create Account
+              {isLoading ? 'Creating Account...' : 'Sign Up'}
             </Button>
           </Box>
         </TabPanel>
