@@ -41,9 +41,18 @@ interface ProgressState {
   message: string;
 }
 
+interface ResearchState {
+  mode: ResearchMode;
+  type: ResearchType;
+  title: string;
+  error: string | null;
+  sections: any[];
+  references: string[];
+}
+
 export default function ResearchPage() {
   const dispatch = useDispatch();
-  const research = useSelector((state: any) => state.research);
+  const research = useSelector((state: { research: ResearchState }) => state.research);
   const [query, setQuery] = useState('');
   const [isGeneratingTarget, setIsGeneratingTarget] = useState(false);
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
@@ -68,6 +77,33 @@ export default function ResearchPage() {
     content: string[];
     level: number;
   }>>([]);
+
+  // Section range configuration for each mode and type combination
+  const sectionRanges: Record<ResearchMode, Record<ResearchType, { min: number; max: number }>> = {
+    [ResearchMode.Basic]: {
+      [ResearchType.General]: { min: 7, max: 12 },
+      [ResearchType.Literature]: { min: 5, max: 11 },
+      [ResearchType.Experiment]: { min: 8, max: 12 }
+    },
+    [ResearchMode.Advanced]: {
+      [ResearchType.General]: { min: 15, max: 20 },
+      [ResearchType.Literature]: { min: 15, max: 22 },
+      [ResearchType.Experiment]: { min: 18, max: 22 }
+    },
+    [ResearchMode.Article]: {
+      [ResearchType.General]: { min: 3, max: 6 },
+      [ResearchType.Literature]: { min: 3, max: 7 },
+      [ResearchType.Experiment]: { min: 5, max: 8 }
+    }
+  };
+
+  // Function to get current section range
+  const getCurrentSectionRange = (): { min: number; max: number } => {
+    if (!research.mode || !research.type) {
+      return { min: 4, max: 6 }; // Default values
+    }
+    return sectionRanges[research.mode][research.type] ?? { min: 4, max: 6 };
+  };
 
   const handleGenerateTarget = async () => {
     if (!query.trim()) {
@@ -102,16 +138,11 @@ export default function ResearchPage() {
       return;
     }
 
-    setIsGeneratingOutline(true);
-    setShowOutline(false);
-    dispatch(setError(null));
-    setProgressState({ progress: 0, message: 'Starting outline generation...' });
-
     try {
-      // Generate outline based on research settings and combined prompts
-      setProgressState({ progress: 10, message: 'Generating outline...' });
-      
-      // Combine all available context for the outline generation
+      setIsGeneratingOutline(true);
+      setProgressState({ progress: 0, message: 'Generating outline...' });
+
+      const { min, max } = getCurrentSectionRange();
       const combinedPrompt = `Research Topic: ${query}
 Research Target: ${research.title}
 Research Mode: ${research.mode}
@@ -122,15 +153,14 @@ Additional Context:
 - The research type is ${research.type.toLowerCase()}
 - The target audience should match the research mode and type
 - The structure should follow academic standards for this type of research
-
-- **The number of outline sections in the outline MUST be within the range of ${getSectionRecommendations(research.mode)}
+- **The number of outline sections in the outline MUST be within the range of ${min} to ${max}**
 
 Requirements:
 - Create a clear, hierarchical structure
+- The number of sections generated MUST be in the range of ${min} to ${max}
 - Use numbers for main sections (1., 2., etc.)
 - Use letters for subsections (a., b., etc.)
 - Include brief descriptions of what each section should cover
-- Ensure the outline supports the research target
 - Maintain logical flow between sections`;
 
       const outline = await generateDetailedOutline(
@@ -971,32 +1001,3 @@ Requirements:
     </Container>
   )
 }
-
-const getSectionRecommendations = (mode: string) => {
-  switch (mode.toLowerCase()) {
-    case 'article':
-      return `
-Recommended Section Structure:
-- 8 main sections: Abstract, Introduction, Literature Review, Methodology, Results, Discussion, Conclusion, References
-- Each main section should have 3-4 subsections
-- Total expected sections: ~30 (8 main + ~22 subsections)`;
-    case 'literature review':
-      return `
-Recommended Section Structure:
-- 6 main sections: Introduction, Review Methodology, Literature Analysis, Findings Synthesis, Discussion, Conclusion
-- Each main section should have 3 subsections
-- Total expected sections: ~24 (6 main + ~18 subsections)`;
-    case 'technical':
-      return `
-Recommended Section Structure:
-- 7 main sections: Abstract, Introduction, Background, Methodology, Implementation, Results, Conclusion
-- Each main section should have 2-3 subsections
-- Total expected sections: ~25 (7 main + ~18 subsections)`;
-    default:
-      return `
-Recommended Section Structure:
-- 5-7 main sections
-- Each main section should have 2-3 subsections
-- Total expected sections: ~20-25 sections`;
-  }
-};

@@ -38,7 +38,7 @@ const GROQ_CONFIG = {
   API_KEY: GROQ_API_KEY,
   MODEL: 'mixtral-8x7b-32768',
   TEMPERATURE: 0.7,
-  MAX_TOKENS: 32000,
+  MAX_TOKENS: 8000,
   MAX_RETRIES: 3,
   BASE_DELAY: 20000 // 20 seconds base delay
 };
