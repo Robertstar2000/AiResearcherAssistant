@@ -136,22 +136,19 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
         geolocation: credentials.metadata?.geolocation || '',
         updated_at: new Date().toISOString(),
         created_at: new Date().toISOString()
-      })
-      .select()
-      .single();
+      });
 
     if (profileError) {
-      console.error('Error creating user profile:', profileError);
-      // Log detailed error information
-      if (profileError.details) {
-        console.error('Error details:', profileError.details);
-      }
-      if (profileError.hint) {
-        console.error('Error hint:', profileError.hint);
-      }
+      // Log the entire error object to understand its structure
+      console.error('Full profile error object:', JSON.stringify(profileError, null, 2));
+      
+      const errorMessage = typeof profileError === 'object' && profileError !== null
+        ? profileError.message || profileError.details || 'Unknown database error'
+        : 'Failed to create profile';
+
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
-        `Failed to create user profile: ${profileError.message}`,
+        `Failed to create user profile: ${errorMessage}`,
         { error: profileError }
       );
     }
