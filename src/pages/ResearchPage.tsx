@@ -136,7 +136,7 @@ Requirements:
 
       // Parse outline into sections
       setProgressState({ progress: 30, message: 'Processing outline...' });
-      const outlineItems = parseDetailedOutline(outline);
+      const outlineItems = await parseDetailedOutline(outline, research.mode, research.type);
       setParsedOutline(outlineItems);
       setOutlineWordCount(calculateOutlineWordCount(outlineItems));
       setProgressState({ progress: 100, message: 'Outline generation complete!' });
