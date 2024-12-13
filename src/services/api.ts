@@ -418,10 +418,11 @@ export async function generateDetailedOutline(
 The outline should follow these requirements:
 
 1. Structure:
-   - Include ${min}-${max} main sections (numbered 1., 2., etc.)
+   - YOU MUST INCLUDE EXACTLY ${min}-${max} MAIN SECTIONS (numbered 1., 2., etc.)
    - Each section must have descriptive bullet points explaining what content will be covered
    - Maintain logical flow and progression of ideas
    - Ensure comprehensive coverage of the topic
+   - IMPORTANT: The outline MUST have at least ${min} and at most ${max} numbered sections
 
 2. Content Requirements:
    - ${requirement}
@@ -434,12 +435,15 @@ The outline should follow these requirements:
    - Use bullet points (•) for section descriptions
    - Each section MUST have multiple descriptive bullet points
    - Make descriptions specific and actionable for content generation
+   - IMPORTANT: Each section MUST start with a number followed by a dot (e.g., "1.", "2.", etc.)
 
 4. Special Considerations for ${mode} mode:
    ${mode === 'basic' ? '- Focus on fundamental concepts and clear explanations\n   - Avoid overly technical language\n   - Emphasize practical applications' :
      mode === 'advanced' ? '- Include detailed technical discussions\n   - Cover advanced concepts and methodologies\n   - Incorporate current research findings' :
      mode === 'technical' ? '- Provide in-depth technical analysis\n   - Include specific methodologies and implementations\n   - Cover technical specifications and requirements' :
      '- Comprehensive literature review\n   - Critical analysis of existing research\n   - Synthesis of different perspectives'}
+
+IMPORTANT: Your outline MUST contain at least ${min} and at most ${max} numbered sections. Each section MUST start with a number followed by a dot (e.g., "1.", "2.", etc.).
 
 Generate a detailed outline now, ensuring each section has clear, specific bullet points describing what content should be covered.`;
 
@@ -452,7 +456,19 @@ Generate a detailed outline now, ensuring each section has clear, specific bulle
 
     const outline = response.choices[0].message.content.trim();
     
-    // Validate outline format
+    // Count the number of sections
+    const sectionMatches = outline.match(/^\d+\./gm);
+    const sectionCount = sectionMatches ? sectionMatches.length : 0;
+
+    // Validate section count
+    if (sectionCount < min || sectionCount > max) {
+      throw new ResearchException(
+        ResearchError.GENERATION_ERROR,
+        `Generated outline has ${sectionCount} sections, but should have between ${min} and ${max} sections. Regenerating...`
+      );
+    }
+
+    // Validate format
     if (!outline.match(/^\d+\./m)) {
       throw new ResearchException(
         ResearchError.GENERATION_ERROR,
