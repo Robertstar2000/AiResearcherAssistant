@@ -1,5 +1,6 @@
 import { generateDetailedOutline, generateSection, generateReferences, OutlineItem } from './api';
 import { ResearchError, ResearchException } from './researchErrors';
+import { ResearchMode, ResearchType } from '../store/slices/researchSlice';
 
 interface ResearchSection {
   title: string;
@@ -14,9 +15,7 @@ interface ResearchResult {
 }
 
 export async function parseDetailedOutline(
-  outlineText: string,
-  _mode: string = 'basic',
-  _type: string = 'general'
+  outlineText: string
 ): Promise<OutlineItem[]> {
   const lines = outlineText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   const items: OutlineItem[] = [];
@@ -92,8 +91,8 @@ export async function parseDetailedOutline(
 
 export async function generateResearch(
   topic: string,
-  mode: string = 'basic',
-  type: string = 'general',
+  mode: ResearchMode = ResearchMode.Basic,
+  type: ResearchType = ResearchType.General,
   progressCallback: (progress: number, message: string) => void
 ): Promise<ResearchResult> {
   try {

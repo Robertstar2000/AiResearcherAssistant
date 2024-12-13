@@ -179,7 +179,7 @@ Requirements:
   const handleOutlineGenerated = async (outline: string) => {
     try {
       setProgressState({ progress: 30, message: 'Processing outline...' });
-      const parsedOutline = await parseDetailedOutline(outline, research.mode, research.type);
+      const parsedOutline = await parseDetailedOutline(outline);
       
       // If parsing returns empty array, regenerate outline
       if (!parsedOutline.length) {
