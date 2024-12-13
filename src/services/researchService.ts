@@ -15,8 +15,8 @@ interface ResearchResult {
 
 export async function parseDetailedOutline(
   outlineText: string,
-  mode: string = 'basic',
-  type: string = 'general'
+  _mode: string = 'basic',
+  _type: string = 'general'
 ): Promise<OutlineItem[]> {
   const lines = outlineText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   const items: OutlineItem[] = [];
@@ -112,7 +112,7 @@ export async function generateResearch(
 
     // Parse outline into sections
     progressCallback(20, 'Analyzing and structuring research outline...');
-    const outlineItems = await parseDetailedOutline(outline, mode, type);
+    const outlineItems = await parseDetailedOutline(outline);
     if (!outlineItems.length) {
       throw new ResearchException(ResearchError.PARSING_ERROR, 'Failed to parse outline');
     }
