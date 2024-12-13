@@ -88,7 +88,7 @@ export default function ResearchPage() {
     [ResearchMode.Advanced]: {
       [ResearchType.General]: { min: 22, max: 28 },
       [ResearchType.Literature]: { min: 25, max: 30 },
-      [ResearchType.Experiment]: { min: 18, max: 22 }
+      [ResearchType.Experiment]: { min: 25, max: 33 }
     },
     [ResearchMode.Article]: {
       [ResearchType.General]: { min: 3, max: 6 },
@@ -100,7 +100,7 @@ export default function ResearchPage() {
   // Function to get current section range
   const getCurrentSectionRange = (): { min: number; max: number } => {
     if (!research.mode || !research.type) {
-      return { min: 4, max: 6 }; // Default values
+      return { min: 10, max: 10 }; // Default values
     }
     return sectionRanges[research.mode][research.type] ?? { min: 4, max: 6 };
   };
@@ -140,31 +140,11 @@ export default function ResearchPage() {
 
     try {
       setIsGeneratingOutline(true);
-      setProgressState({ progress: 0, message: 'Generating outline...' });
-
-      const { min, max } = getCurrentSectionRange();
-      const combinedPrompt = `Research Topic: ${query}
-Research Target: ${research.title}
-Research Mode: ${research.mode}
-Research Type: ${research.type}
-
-Additional Context:
-- This is a ${research.mode.toLowerCase()} research paper
-- The research type is ${research.type.toLowerCase()}
-- The target audience should match the research mode and type
-- The structure should follow academic standards for this type of research
-- **The number of outline sections in the outline MUST be within the range of ${min} to ${max}**
-
-Requirements:
-- Create a clear, hierarchical structure
-- The number of sections generated MUST be in the range of ${min} to ${max}
-- Use numbers for main sections (1., 2., etc.)
-- Use letters for subsections (a., b., etc.)
-- Include brief descriptions of what each section should cover
-- Maintain logical flow between sections`;
-
+      setProgressState({ progress: 10, message: 'Generating outline...' });
+      const range = getCurrentSectionRange();
+      const topicWithRange = `${research.title} MUST be within the range of ${range.min} to ${range.max}`;
       const outline = await generateDetailedOutline(
-        combinedPrompt,
+        topicWithRange,
         research.mode.toLowerCase(),
         research.type.toLowerCase()
       );
@@ -188,6 +168,14 @@ Requirements:
       setProgressState({ progress: 30, message: 'Processing outline...' });
       const parsedOutline = await parseDetailedOutline(outline, research.mode, research.type);
       
+      // If parsing returns empty array, regenerate outline
+      if (!parsedOutline.length) {
+        console.log('Invalid section count, regenerating outline...');
+        setProgressState({ progress: 10, message: 'Regenerating outline...' });
+        handleGenerateOutline();
+        return;
+      }
+
       setParsedOutline(parsedOutline);
       setOutlineWordCount(calculateOutlineWordCount(parsedOutline));
       setProgressState({ progress: 100, message: 'Outline generation complete!' });

@@ -412,21 +412,8 @@ Generate a detailed outline now, ensuring each section has clear, specific bulle
 
     const outline = response.choices[0].message.content.trim();
     
-    // Split into lines and count sections that start with a number and dot
-    const lines = outline.split('\n');
-    const sectionCount = lines.filter((line: string) => /^\d+\./.test(line.trim())).length;
-
-    // Validate section count
-    if (sectionCount < min || sectionCount > max) {
-      console.log('Generated outline:', outline); // For debugging
-      console.log(`Found ${sectionCount} sections in outline`); // For debugging
-      throw new ResearchException(
-        ResearchError.GENERATION_ERROR,
-        `Generated outline has ${sectionCount} sections, but should have between ${min} and ${max} sections. Regenerating...`
-      );
-    }
-
     // Validate format of each section
+    const lines = outline.split('\n');
     const hasValidSections = lines.some((line: string) => /^\d+\./.test(line.trim()));
     if (!hasValidSections) {
       throw new ResearchException(
