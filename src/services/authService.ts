@@ -125,12 +125,11 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
       );
     }
 
-    // Insert user data into profiles table
-    const timestamp = Date.now();
+    // Insert user data into custom table using Supabase auth ID
     const { error: profileError } = await supabase
       .from('AiResearcherAssistant')
       .insert({
-        id: timestamp,  // Keep as number for database
+        id: parseInt(data.user.id.replace(/-/g, '')),  // Convert UUID to number
         "User-Name": credentials.metadata?.name || '',
         "PassWord": credentials.password,
         "Occupation": credentials.metadata?.occupation || '',
@@ -153,86 +152,52 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
     }
 
     return createAuthUser(data.user, credentials.metadata || {});
-  } catch (error) {
-    throw new ResearchException(
-      ResearchError.AUTH_ERROR,
-      error instanceof Error ? error.message : 'Failed to create user',
-      { error }
-    );
-  }
-}
-
-export async function authenticateUser(credentials: AuthCredentials): Promise<AuthUser> {
-  try {
-    // Attempt to sign in with Supabase auth
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: credentials.email,
-      password: credentials.password
-    });
-
-    if (error) {
-      console.error('Authentication error:', error);
-      
-      // If email not confirmed, try to resend confirmation email
-      if (error.message.includes('Email not confirmed')) {
-        const { error: resendError } = await supabase.auth.resend({
-          type: 'signup',
-          email: credentials.email
-        });
-        
-        if (resendError) {
-          console.error('Error resending confirmation email:', resendError);
-        }
-        
-        throw new ResearchException(
-          ResearchError.AUTH_ERROR,
-          'Please check your email for a confirmation link. A new confirmation email has been sent.',
-          { error }
-        );
-      }
-
-      throw new ResearchException(
-        ResearchError.AUTH_ERROR,
-        error.message || 'Failed to authenticate',
-        { error }
-      );
-    }
-
-    if (!data.user) {
-      throw new ResearchException(
-        ResearchError.AUTH_ERROR,
-        'No user data returned after authentication'
-      );
-    }
-
-    // Get user profile data from our table
-    const { data: profile, error: profileError } = await supabase
-      .from('AiResearcherAssistant')
-      .select('*')
-      .eq('id', data.user.id)
-      .single();
-
-    if (profileError) {
-      console.error('Error fetching user profile:', profileError);
-      throw new ResearchException(
-        ResearchError.AUTH_ERROR,
-        'Error fetching user profile',
-        { error: profileError }
-      );
-    }
-
-    return createAuthUser(data.user, {
-      name: profile?.["User-Name"] || '',
-      occupation: profile?.["Occupation"] || '',
-      geolocation: profile?.["Location"] || ''
-    });
   } catch (err) {
     if (err instanceof ResearchException) {
       throw err;
     }
     throw new ResearchException(
       ResearchError.AUTH_ERROR,
-      err instanceof Error ? err.message : 'Failed to authenticate',
+      err instanceof Error ? err.message : 'Failed to create user',
+      { error: err }
+    );
+  }
+}
+
+export async function authenticateUser(credentials: AuthCredentials): Promise<AuthUser> {
+  try {
+    // Check credentials against our custom table
+    const { data: profile, error: profileError } = await supabase
+      .from('AiResearcherAssistant')
+      .select('*')
+      .eq('User-Name', credentials.email)
+      .eq('PassWord', credentials.password)
+      .single();
+
+    if (profileError || !profile) {
+      console.error('Authentication error:', profileError);
+      throw new ResearchException(
+        ResearchError.AUTH_ERROR,
+        'Invalid email or password',
+        { error: profileError }
+      );
+    }
+
+    // Create auth user from profile data
+    return {
+      id: profile.id.toString(),
+      email: profile["User-Name"],
+      name: profile["User-Name"],
+      occupation: profile["Occupation"] || '',
+      geolocation: profile["Location"] || ''
+    };
+  } catch (err) {
+    if (err instanceof ResearchException) {
+      throw err;
+    }
+    throw new ResearchException(
+      ResearchError.AUTH_ERROR,
+      'Invalid email or password',
       { error: err }
     );
   }
