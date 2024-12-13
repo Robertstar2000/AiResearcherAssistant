@@ -164,23 +164,7 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
 
 export async function authenticateUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
-    // First check if the email exists in the database
-    const { error: userCheckError } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('email', credentials.email)
-      .single();
-
-    if (userCheckError && userCheckError.code !== 'PGRST116') {
-      console.error('Error checking user existence:', userCheckError);
-      throw new ResearchException(
-        ResearchError.AUTH_ERROR,
-        'Error verifying user account',
-        { error: userCheckError }
-      );
-    }
-
-    // Attempt to sign in
+    // Attempt to sign in with Supabase auth
     const { data, error } = await supabase.auth.signInWithPassword({
       email: credentials.email,
       password: credentials.password
@@ -188,69 +172,49 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
 
     if (error) {
       console.error('Authentication error:', error);
-      // Handle specific error cases
-      if (error.message.includes('Email not confirmed')) {
-        // Check if the user exists but email is not confirmed
-        const { data: userExists } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('email', credentials.email)
-          .single();
-        
-        if (userExists) {
-          // If user exists, allow sign in despite email not being confirmed
-          console.log('User exists, proceeding with authentication despite email not being confirmed');
-        } else {
-          throw new ResearchException(
-            ResearchError.AUTH_ERROR,
-            'Invalid email or password',
-            { error }
-          );
-        }
-      } else {
-        throw new ResearchException(
-          ResearchError.AUTH_ERROR,
-          'Authentication failed: Invalid credentials',
-          { error }
-        );
-      }
-    }
-
-    if (!data?.user) {
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
-        'Authentication successful but no user data returned'
+        error.message || 'Failed to authenticate',
+        { error }
       );
     }
 
-    // Get the user's metadata from their profile
+    if (!data.user) {
+      throw new ResearchException(
+        ResearchError.AUTH_ERROR,
+        'No user data returned after authentication'
+      );
+    }
+
+    // Get user profile data from our table
     const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('name, occupation, geolocation')
+      .from('AiResearcherAssistant')
+      .select('*')
       .eq('id', data.user.id)
       .single();
 
-    let metadata: UserMetadata = {
-      name: data.user.user_metadata?.name || '',
-      occupation: data.user.user_metadata?.occupation || '',
-      geolocation: data.user.user_metadata?.geolocation || ''
-    };
-
-    if (profile && !profileError) {
-      metadata = {
-        name: profile.name || metadata.name,
-        occupation: profile.occupation || metadata.occupation,
-        geolocation: profile.geolocation || metadata.geolocation
-      };
+    if (profileError) {
+      console.error('Error fetching user profile:', profileError);
+      throw new ResearchException(
+        ResearchError.AUTH_ERROR,
+        'Error fetching user profile',
+        { error: profileError }
+      );
     }
 
-    return createAuthUser(data.user, metadata);
-  } catch (error) {
-    console.error('Authentication error:', error);
+    return createAuthUser(data.user, {
+      name: profile?.["User-Name"] || '',
+      occupation: profile?.["Occupation"] || '',
+      geolocation: profile?.["Location"] || ''
+    });
+  } catch (err) {
+    if (err instanceof ResearchException) {
+      throw err;
+    }
     throw new ResearchException(
       ResearchError.AUTH_ERROR,
-      error instanceof Error ? error.message : 'Authentication failed',
-      { error }
+      err instanceof Error ? err.message : 'Failed to authenticate',
+      { error: err }
     );
   }
 }
