@@ -1,6 +1,26 @@
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
-import { ResearchException, ResearchError } from '../types/exceptions';
+
+// Error types
+export enum ResearchError {
+  GENERATION_ERROR = 'GENERATION_ERROR',
+  API_ERROR = 'API_ERROR',
+  RATE_LIMIT_ERROR = 'RATE_LIMIT_ERROR',
+  AUTH_ERROR = 'AUTH_ERROR',
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
+  CONFIGURATION_ERROR = 'CONFIGURATION_ERROR'
+}
+
+export class ResearchException extends Error {
+  constructor(
+    public readonly code: ResearchError,
+    message: string,
+    public readonly details?: Record<string, any>
+  ) {
+    super(message);
+    this.name = 'ResearchException';
+  }
+}
 
 // API Configuration
 const isProd = import.meta.env.PROD;
@@ -113,6 +133,17 @@ const waitBetweenCalls = async (retryCount = 0): Promise<void> => {
 };
 
 // API Call Functions
+const handleApiError = (error: unknown, defaultMessage: string): never => {
+  console.error('API error:', error);
+  if (error instanceof ResearchException) {
+    throw error;
+  }
+  throw new ResearchException(
+    ResearchError.API_ERROR,
+    error instanceof Error ? error.message : defaultMessage
+  );
+};
+
 async function makeGroqApiCall(
   prompt: string,
   maxTokens: number = GROQ_CONFIG.MAX_TOKENS,
@@ -165,54 +196,20 @@ async function makeGroqApiCall(
     }
 
     return data;
-  } catch (error) {
-    console.error('GROQ API call failed:', error);
-    if (error instanceof ResearchException) {
-      throw error;
-    }
-    throw new ResearchException(
-      ResearchError.GENERATION_ERROR,
-      `Failed to generate content: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
+  } catch (error: unknown) {
+    handleApiError(error, 'Failed to generate content');
   }
-};
-
-function handleApiError(error: unknown, message: string): never {
-  console.error(message, error);
-  if (error instanceof ResearchException) {
-    throw error;
-  }
-  throw new ResearchException(
-    ResearchError.API_ERROR,
-    message
-  );
 };
 
 async function makeApiCall<T>(
-  apiFunction: () => Promise<T>,
+  apiCall: () => Promise<T>,
   errorMessage: string,
-  retryCount: number = 0
+  retryCount: number = 3
 ): Promise<T> {
   try {
-    if (retryCount > 0) {
-      await waitBetweenCalls(retryCount - 1);
-    }
-    const result = await apiFunction();
-    return result;
-  } catch (error) {
-    if (error instanceof ResearchException && error.code === ResearchError.RATE_LIMIT_ERROR) {
-      if (retryCount < GROQ_CONFIG.MAX_RETRIES) {
-        console.log(`Rate limit hit, waiting before retry ${retryCount + 1}/${GROQ_CONFIG.MAX_RETRIES}`);
-        await waitBetweenCalls(retryCount);
-        return makeApiCall(apiFunction, errorMessage, retryCount + 1);
-      }
-    }
-    if (retryCount < GROQ_CONFIG.MAX_RETRIES) {
-      console.log(`Error, retrying ${retryCount + 1}/${GROQ_CONFIG.MAX_RETRIES}`);
-      return makeApiCall(apiFunction, errorMessage, retryCount + 1);
-    }
+    return await apiCall();
+  } catch (error: unknown) {
     handleApiError(error, errorMessage);
-    throw error;
   }
 };
 
@@ -226,12 +223,8 @@ export async function generateTitle(query: string): Promise<string> {
       'Failed to generate title'
     );
     return response.choices[0].message.content.trim();
-  } catch (error) {
-    throw new ResearchException(
-      ResearchError.API_ERROR,
-      error instanceof Error ? error.message : 'Unknown error',
-      { originalError: error }
-    );
+  } catch (error: unknown) {
+    handleApiError(error, 'Failed to generate title');
   }
 };
 
@@ -275,9 +268,8 @@ Generate the section content now:`;
     );
 
     return response.choices[0].message.content.trim();
-  } catch (error) {
-    console.error('Error in generateSection:', error);
-    throw error;
+  } catch (error: unknown) {
+    handleApiError(error, `Failed to generate section content for "${sectionTitle}"`);
   }
 };
 
@@ -287,7 +279,7 @@ export async function generateSectionBatch(
   try {
     if (!sections || sections.length === 0) {
       throw new ResearchException(
-        ResearchError.VALIDATION_FAILED,
+        ResearchError.VALIDATION_ERROR,
         'No sections provided for batch generation'
       );
     }
@@ -308,23 +300,14 @@ export async function generateSectionBatch(
         }
         
         results.push(content);
-      } catch (error) {
-        console.error(`Error generating batch section "${section.sectionTitle}":`, error);
-        throw new ResearchException(
-          ResearchError.API_ERROR,
-          `Failed to generate section "${section.sectionTitle}": ${error instanceof Error ? error.message : 'Unknown error'}`,
-          { originalError: error, section }
-        );
+      } catch (error: unknown) {
+        handleApiError(error, `Failed to generate section "${section.sectionTitle}"`);
       }
     }
 
     return results;
-  } catch (error) {
-    throw new ResearchException(
-      error instanceof ResearchException ? error.code : ResearchError.API_ERROR,
-      error instanceof Error ? error.message : 'Failed to generate section batch',
-      { error, sections }
-    );
+  } catch (error: unknown) {
+    handleApiError(error, 'Failed to generate section batch');
   }
 };
 
@@ -332,12 +315,8 @@ export async function searchPapers(searchQuery: string): Promise<any[]> {
   try {
     // Implement paper search functionality
     return [];
-  } catch (error) {
-    throw new ResearchException(
-      ResearchError.API_ERROR,
-      error instanceof Error ? error.message : 'Failed to search papers',
-      { error, searchQuery }
-    );
+  } catch (error: unknown) {
+    handleApiError(error, 'Failed to search papers');
   }
 };
 
@@ -372,16 +351,8 @@ The references should be relevant, authoritative, and properly formatted.`;
     }
 
     return content;
-  } catch (error) {
-    if (error instanceof ResearchException && error.code === ResearchError.RATE_LIMIT_ERROR) {
-      if ((ref.retryCount || 0) < GROQ_CONFIG.MAX_RETRIES) {
-        console.log(`Rate limit hit while generating references. Retrying...`);
-        await waitBetweenCalls(ref.retryCount || 0);
-        return generateReferences(topic, { retryCount: (ref.retryCount || 0) + 1 });
-      }
-    }
-    console.error('Failed to generate references:', error);
-    throw error;
+  } catch (error: unknown) {
+    handleApiError(error, 'Failed to generate references');
   }
 }
 
@@ -508,9 +479,8 @@ The outline must follow these requirements:
     }
 
     return outline;
-  } catch (error) {
-    console.error('Error in generateDetailedOutline:', error);
-    throw error;
+  } catch (error: unknown) {
+    handleApiError(error, 'Failed to generate detailed outline');
   }
 };
 
@@ -524,12 +494,8 @@ export async function saveResearch(researchData: any): Promise<{ id: string }> {
 
     if (error) throw error;
     return { id: data.id };
-  } catch (error) {
-    throw new ResearchException(
-      ResearchError.API_ERROR,
-      error instanceof Error ? error.message : 'Unknown error',
-      { originalError: error }
-    );
+  } catch (error: unknown) {
+    handleApiError(error, 'Failed to save research');
   }
 };
 
@@ -543,11 +509,7 @@ export async function getResearchHistory(userId: string): Promise<any[]> {
 
     if (error) throw error;
     return data || [];
-  } catch (error) {
-    throw new ResearchException(
-      ResearchError.API_ERROR,
-      error instanceof Error ? error.message : 'Unknown error',
-      { originalError: error }
-    );
+  } catch (error: unknown) {
+    handleApiError(error, 'Failed to get research history');
   }
 };
