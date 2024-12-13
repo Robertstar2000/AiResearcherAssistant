@@ -87,38 +87,6 @@ export async function parseDetailedOutline(
     description: item.description || '[Description to be added]'
   }));
 
-  // Get section count requirements
-  const sectionCounts = {
-    basic: {
-      general: { min: 8, max: 12 },
-      Literature: { min: 6, max: 10 },
-      Experement: { min: 8, max: 12 },
-    },
-    advanced: {
-      general: { min: 18, max: 25 },
-      Literature: { min: 10, max: 15 },
-      Experement: { min: 18, max: 25 },
-    },
-    artical: {
-      general: { min: 3, max: 5 },
-      Literature: { min: 3, max: 5 },
-      Experement: { min: 3, max: 5 },
-    },
-  };
-
-  const { min, max } = sectionCounts[mode as keyof typeof sectionCounts]?.[type as keyof (typeof sectionCounts)['basic']] 
-    || sectionCounts.basic.general;
-
-  // Count top-level sections (not subsections)
-  const topLevelSections = processedItems.filter(item => !item.isSubsection).length;
-
-  // Validate section count
-  if (topLevelSections < min || topLevelSections > max) {
-    console.log(`Found ${topLevelSections} top-level sections, expected ${min}-${max}`);
-    // Instead of throwing error, return empty array to trigger regeneration
-    return [];
-  }
-
   return processedItems;
 }
 
