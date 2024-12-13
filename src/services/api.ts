@@ -439,30 +439,6 @@ The outline must follow these requirements:
     const lines = outline.split('\n');
     let sections: string[] = [];
     
-    // Helper function to convert roman numeral to number
-    const romanToInt = (roman: string): number => {
-      const romanMap: { [key: string]: number } = {
-        'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000
-      };
-      let result = 0;
-      for (let i = 0; i < roman.length; i++) {
-        const current = romanMap[roman[i]];
-        const next = romanMap[roman[i + 1]];
-        if (next > current) {
-          result += next - current;
-          i++;
-        } else {
-          result += current;
-        }
-      }
-      return result;
-    };
-
-    // Helper function to check if a string is a valid roman numeral
-    const isRomanNumeral = (str: string): boolean => {
-      return /^[IVXLCDM]+$/.test(str.toUpperCase());
-    };
-    
     // Regex pattern to match section headers:
     // Matches: "1. Title" or "A. Title" or "I. Title" or "a. Title" or "IV. Title"
     const sectionPattern = /^(?:(?:\d+|[A-Za-z]|[IVXLCDM]+)\.\s+)(.+)$/;
