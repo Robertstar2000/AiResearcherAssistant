@@ -356,29 +356,36 @@ export async function generateDetailedOutline(
   mode: string = 'basic',
   type: string = 'general'
 ): Promise<string> {
-  // Define research type requirements
-  const typeRequirements = {
-    general: 'Focus on providing a comprehensive overview with balanced coverage of all aspects.',
-    Literature: 'Provide extensive literature review and synthesis of existing research.',
-    Experement: 'Focus on experimental design, methodology, and results analysis.'
-  };
-
-  const requirement = typeRequirements[type as keyof typeof typeRequirements] || typeRequirements.general;
-
-  // Extract min and max from the topic string if it contains them
-  const rangeMatch = topic.match(/MUST be within the range of (\d+) to (\d+)/);
+  // Extract section count requirements
+  const rangeMatch = topic.match(/contain between (\d+) and (\d+) main sections/);
   const min = rangeMatch ? parseInt(rangeMatch[1]) : 3;
   const max = rangeMatch ? parseInt(rangeMatch[2]) : 25;
 
-  const systemPrompt = `You are an expert research outline generator. Create a detailed, well-structured outline for a ${mode} level research paper about "${topic}". 
-The outline should follow these requirements:
+  // Define research type requirements
+  const typeRequirements = {
+    general: 'Focus on providing a comprehensive overview with balanced coverage of all aspects.',
+    literature: 'Provide extensive literature review and synthesis of existing research.',
+    experiment: 'Focus on experimental design, methodology, and results analysis.'
+  };
+
+  const requirement = typeRequirements[type.toLowerCase() as keyof typeof typeRequirements] || typeRequirements.general;
+
+  const systemPrompt = `You are an expert research outline generator. Create a detailed, well-structured outline for a ${mode} level research paper.
+
+IMPORTANT SECTION COUNT REQUIREMENT:
+- You MUST generate exactly between ${min} and ${max} main sections
+- No more and no less than this range is acceptable
+- Each main section must be numbered (1., 2., etc.)
+
+Topic: "${topic.split('\n')[0]}"
+
+The outline must follow these requirements:
 
 1. Structure:
-   - YOU MUST INCLUDE EXACTLY ${min}-${max} MAIN SECTIONS (numbered 1., 2., etc.)
-   - Each section must have descriptive bullet points explaining what content will be covered
+   - Generate between ${min} and ${max} main sections (numbered 1., 2., etc.)
+   - Each main section must have descriptive bullet points
    - Maintain logical flow and progression of ideas
    - Ensure comprehensive coverage of the topic
-   - IMPORTANT: The outline MUST have at least ${min} and at most ${max} numbered sections
 
 2. Content Requirements:
    - ${requirement}
@@ -390,8 +397,8 @@ The outline should follow these requirements:
    - Use numbers for main sections (1., 2., etc.)
    - Use bullet points (•) for section descriptions
    - Each section MUST have multiple descriptive bullet points
-   - Make descriptions specific and actionable for content generation
-   - IMPORTANT: Each section MUST start with a number followed by a dot (e.g., "1.", "2.", etc.)
+   - Make descriptions specific and actionable
+   - Each section MUST start with a number followed by a dot
    - Each section MUST start on a new line
 
 4. Special Considerations for ${mode} mode:
@@ -399,9 +406,14 @@ The outline should follow these requirements:
      mode === 'advanced' ? '- Include detailed technical discussions\n   - Cover advanced concepts and methodologies\n   - Incorporate current research findings' :
      '- Focus on concise presentation\n   - Highlight key findings\n   - Maintain article format standards'}
 
-IMPORTANT: Your outline MUST contain at least ${min} and at most ${max} numbered sections. Each section MUST start with a number followed by a dot (e.g., "1.", "2.", etc.) and MUST start on a new line.
+FINAL VERIFICATION:
+Before completing, verify that:
+1. The outline has AT LEAST ${min} main sections
+2. The outline has NO MORE THAN ${max} main sections
+3. All main sections are properly numbered
+4. Each section has descriptive bullet points
 
-Generate a detailed outline now, ensuring each section has clear, specific bullet points describing what content should be covered.`;
+Generate the outline now:`;
 
   try {
     const response = await makeApiCall(
@@ -412,10 +424,18 @@ Generate a detailed outline now, ensuring each section has clear, specific bulle
 
     const outline = response.choices[0].message.content.trim();
     
-    // Validate format of each section
+    // Validate format and section count
     const lines = outline.split('\n');
-    const hasValidSections = lines.some((line: string) => /^\d+\./.test(line.trim()));
-    if (!hasValidSections) {
+    const sections = lines.filter((line: string) => /^\d+\./.test(line.trim()));
+    
+    if (sections.length < min || sections.length > max) {
+      throw new ResearchException(
+        ResearchError.GENERATION_ERROR,
+        `Generated outline has ${sections.length} sections, but must be between ${min} and ${max} sections. Regenerating...`
+      );
+    }
+
+    if (!sections.length) {
       throw new ResearchException(
         ResearchError.GENERATION_ERROR,
         'Generated outline does not follow the required format. Each section must start with a number followed by a dot.'
