@@ -227,11 +227,29 @@ export const generateSection = async (
   mode: ResearchMode = ResearchMode.Basic,
   type: ResearchType = ResearchType.General
 ): Promise<string> => {
+  // Extract bullet points if they exist, otherwise use the entire description
   const bulletPoints = sectionDescription
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.startsWith('•') || line.startsWith('-'))
-    .join('\n');
+    ? sectionDescription
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map(line => line.startsWith('•') || line.startsWith('-') ? line : `• ${line}`)
+        .join('\n')
+    : '• Provide a comprehensive analysis and discussion\n• Draw meaningful conclusions\n• Offer practical recommendations';
+
+  // Determine if this is a special section that needs custom handling
+  const isConclusion = sectionTitle.toLowerCase().includes('conclusion') || 
+                      sectionTitle.toLowerCase().includes('final thoughts') ||
+                      sectionTitle.toLowerCase().includes('recommendations');
+
+  const specialInstructions = isConclusion
+    ? `For this concluding section:
+1. Summarize the key findings and insights from the research
+2. Connect back to the main research objectives
+3. Discuss practical implications and applications
+4. Identify limitations and areas for future research
+5. End with strong, actionable recommendations`
+    : '';
 
   return makeApiCall(
     async () => {
@@ -253,7 +271,7 @@ Writing Requirements:
 4. Maintain logical flow and smooth transitions between ideas
 5. Use appropriate terminology for ${type} research
 6. Ensure proper paragraph structure and organization
-7. Write approximately 500-1000 words depending on section importance
+7. Write approximately ${isConclusion ? '800-1200' : '500-1000'} words depending on section importance
 8. Include in-text citations where appropriate (in parenthetical format)
 
 Additional Guidelines:
@@ -262,12 +280,24 @@ Additional Guidelines:
 - End with a clear conclusion or transition
 - Maintain academic tone throughout
 - Be specific and precise in language use
+${specialInstructions}
 
 Format the content in clear paragraphs with proper academic structure.`,
-        2000,
-        `You are an expert academic writer specializing in ${type} research at the ${mode} level. Your goal is to produce clear, well-structured, and academically rigorous content.`
+        isConclusion ? 2500 : 2000,
+        `You are an expert academic writer specializing in ${type} research at the ${mode} level. Your task is to write the ${isConclusion ? 'concluding' : 'main body'} section of an academic paper, ensuring comprehensive coverage and maintaining academic rigor throughout.`
       );
-      return response.choices[0].message.content.trim();
+
+      const content = response.choices[0].message.content.trim();
+      
+      // Validate content length
+      if (content.length < 200) {
+        throw new ResearchException(
+          ResearchError.GENERATION_ERROR,
+          `Generated content for section "${sectionTitle}" is too short (${content.length} characters)`
+        );
+      }
+
+      return content;
     },
     `Failed to generate content for section "${sectionTitle}"`
   );
