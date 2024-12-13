@@ -125,6 +125,29 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
       );
     }
 
+    // Insert user data into profiles table
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .insert([
+        {
+          id: data.user.id,
+          email: data.user.email,
+          name: credentials.metadata?.name || '',
+          occupation: credentials.metadata?.occupation || '',
+          geolocation: credentials.metadata?.geolocation || '',
+          updated_at: new Date().toISOString()
+        }
+      ]);
+
+    if (profileError) {
+      console.error('Error creating user profile:', profileError);
+      throw new ResearchException(
+        ResearchError.AUTH_ERROR,
+        'Failed to create user profile',
+        { error: profileError }
+      );
+    }
+
     return createAuthUser(data.user, credentials.metadata || {});
   } catch (error) {
     throw new ResearchException(
