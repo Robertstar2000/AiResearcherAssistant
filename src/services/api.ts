@@ -383,13 +383,16 @@ export async function generateDetailedOutline(
   const min = rangeMatch ? parseInt(rangeMatch[1]) : 3;
   const max = rangeMatch ? parseInt(rangeMatch[2]) : 25;
 
-  const prompt = `Create a detailed ${type} research outline for the following topic. The outline MUST contain between ${min} and ${max} main sections, no more and no less:
+  const prompt = `Create a detailed ${type} research outline with ${min} to ${max} main sections for the following topic. The outline MUST contain between ${min} and ${max} main sections, no more and no less:
 
 Topic: "${topic}"
 
 Requirements:
 1. Generate EXACTLY between ${min} and ${max} main sections
-2. Each section must be numbered (1., 2., etc.) or lettered (A., B., etc.)
+2. Each section must use one of these formats:
+   - Numbers (1., 2., 3., etc.)
+   - Letters (A., B., C., etc. or a., b., c., etc.)
+   - Roman numerals (I., II., III., etc.)
 3. Include descriptive bullet points for each section
 4. Maintain logical flow between sections
 5. Ensure comprehensive topic coverage`;
@@ -397,14 +400,17 @@ Requirements:
   const systemPrompt = `You are an expert research outline generator. Create a detailed, well-structured outline for a ${mode} level ${type} research paper.
 
 IMPORTANT SECTION COUNT REQUIREMENT:
-- You MUST generate exactly between ${min} and ${max} main sections
+- You MUST generate between ${min} and ${max} main sections
 - No more and no less than this range is acceptable
-- Each main section must be numbered (1., 2., etc.) or lettered (A., B., etc.)
+- Each main section must use one of these formats:
+  * Numbers (1., 2., 3., etc.)
+  * Letters (A., B., C., etc. or a., b., c., etc.)
+  * Roman numerals (I., II., III., etc.)
 
 The outline must follow these requirements:
 
 1. Structure:
-   - Generate between ${min} and ${max} main sections (numbered 1., 2., etc. or lettered A., B., etc.)
+   - Generate between ${min} and ${max} main sections
    - Each main section must have descriptive bullet points
    - Maintain logical flow and progression of ideas
    - Ensure comprehensive coverage of the topic
@@ -416,7 +422,7 @@ The outline must follow these requirements:
    - Consider current research trends and developments
 
 3. Format Requirements:
-   - Use numbers or letters for main sections (1., 2., etc. or A., B., etc.)
+   - Use consistent section numbering (choose one: numbers, letters, or roman numerals)
    - Use bullet points (•) for section descriptions
    - Each section MUST have multiple descriptive bullet points`;
 
@@ -434,26 +440,60 @@ The outline must follow these requirements:
     let sectionCount = 0;
     let lastSectionNumber = 0;
     let lastSectionLetter = '';
+    let lastRomanNumeral = '';
+    
+    // Helper function to convert roman numeral to number
+    const romanToInt = (roman: string): number => {
+      const romanMap: { [key: string]: number } = {
+        'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000
+      };
+      let result = 0;
+      for (let i = 0; i < roman.length; i++) {
+        const current = romanMap[roman[i]];
+        const next = romanMap[roman[i + 1]];
+        if (next > current) {
+          result += next - current;
+          i++;
+        } else {
+          result += current;
+        }
+      }
+      return result;
+    };
     
     for (const line of lines) {
       const trimmedLine = line.trim();
-      // Match either numbered sections (1., 2.) or lettered sections (A., B., a., b.)
+      // Match numbered sections (1., 2.), lettered sections (A., B., a., b.), or roman numerals (I., II., III.)
       const numberMatch = trimmedLine.match(/^(\d+)\./);
       const letterMatch = trimmedLine.match(/^([A-Za-z])\./);
+      const romanMatch = trimmedLine.match(/^([IVXLCDM]+)\./);
       
       if (numberMatch) {
         const currentNumber = parseInt(numberMatch[1]);
         if (currentNumber > lastSectionNumber) {
           sectionCount++;
           lastSectionNumber = currentNumber;
-          lastSectionLetter = ''; // Reset letter counting when switching to numbers
+          lastSectionLetter = '';
+          lastRomanNumeral = '';
         }
       } else if (letterMatch) {
         const currentLetter = letterMatch[1].toLowerCase();
         if (currentLetter > lastSectionLetter || lastSectionLetter === '') {
           sectionCount++;
           lastSectionLetter = currentLetter;
-          lastSectionNumber = 0; // Reset number counting when switching to letters
+          lastSectionNumber = 0;
+          lastRomanNumeral = '';
+        }
+      } else if (romanMatch) {
+        const currentRoman = romanMatch[1].toUpperCase();
+        const currentValue = romanToInt(currentRoman);
+        const lastValue = lastRomanNumeral ? romanToInt(lastRomanNumeral) : 0;
+        
+        if (currentValue > lastValue) {
+          sectionCount++;
+          lastRomanNumeral = currentRoman;
+          lastSectionNumber = 0;
+          lastSectionLetter = '';
         }
       }
     }
