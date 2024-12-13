@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
-import { ResearchException, ResearchError } from './researchErrors';
+import { ResearchException, ResearchError } from '../types/exceptions';
 
 // API Configuration
 const isProd = import.meta.env.PROD;
@@ -71,6 +71,14 @@ interface GroqMessage {
   content: string;
 }
 
+interface GroqResponse {
+  choices: {
+    message: {
+      content: string;
+    };
+  }[];
+}
+
 interface GroqRequest {
   model: string;
   messages: GroqMessage[];
@@ -109,58 +117,62 @@ async function makeGroqApiCall(
   prompt: string,
   maxTokens: number = GROQ_CONFIG.MAX_TOKENS,
   systemPrompt?: string
-): Promise<any> {
-  const messages: GroqMessage[] = [];
-  
-  if (systemPrompt) {
-    messages.push({
-      role: 'system',
-      content: systemPrompt
-    });
-  }
-  
-  messages.push({
-    role: 'user',
-    content: prompt
-  });
-
-  const requestData: GroqRequest = {
-    model: GROQ_CONFIG.MODEL,
-    messages: messages,
-    temperature: GROQ_CONFIG.TEMPERATURE,
-    max_tokens: maxTokens
-  };
-
+): Promise<GroqResponse> {
   try {
-    console.log('Making API call to GROQ...');
-    const response = await axios.post(GROQ_CONFIG.API_URL, requestData, {
+    const response = await fetch(GROQ_API_URL, {
+      method: 'POST',
       headers: {
-        'Authorization': `Bearer ${GROQ_CONFIG.API_KEY}`,
-        'Content-Type': 'application/json'
-      }
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'mixtral-8x7b-32768',
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt,
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: maxTokens,
+        top_p: 1,
+        stop: null,
+        stream: false,
+      }),
     });
-    console.log('API call successful');
-    return response.data;
-  } catch (error) {
-    console.error('API call failed:', error);
-    if (axios.isAxiosError(error)) {
-      if (error.response?.status === 429) {
-        throw new ResearchException(
-          ResearchError.RATE_LIMIT_ERROR,
-          'API rate limit exceeded',
-          { originalError: error }
-        );
-      }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
       throw new ResearchException(
-        ResearchError.API_ERROR,
-        `API call failed: ${error.response?.data?.error?.message || error.message}`,
-        { originalError: error }
+        ResearchError.GENERATION_ERROR,
+        `API request failed: ${response.status} ${response.statusText}${
+          errorData ? ' - ' + JSON.stringify(errorData) : ''
+        }`
       );
     }
+
+    const data = await response.json();
+    
+    if (!data?.choices?.[0]?.message?.content) {
+      throw new ResearchException(
+        ResearchError.GENERATION_ERROR,
+        'Invalid API response format: ' + JSON.stringify(data)
+      );
+    }
+
+    return data;
+  } catch (error) {
+    console.error('GROQ API call failed:', error);
+    if (error instanceof ResearchException) {
+      throw error;
+    }
     throw new ResearchException(
-      ResearchError.API_ERROR,
-      'API call failed',
-      { originalError: error }
+      ResearchError.GENERATION_ERROR,
+      `Failed to generate content: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
   }
 };
@@ -433,8 +445,24 @@ The outline must follow these requirements:
       0
     );
 
+    if (!response?.choices?.[0]?.message?.content) {
+      throw new ResearchException(
+        ResearchError.GENERATION_ERROR,
+        'Failed to generate outline: Empty response from AI'
+      );
+    }
+
     const outline = response.choices[0].message.content.trim();
     
+    if (!outline) {
+      throw new ResearchException(
+        ResearchError.GENERATION_ERROR,
+        'Failed to generate outline: Empty outline content'
+      );
+    }
+
+    console.log('Raw outline generated:', outline); // Debug log
+
     // Parse and count sections based on format: [number|letter|roman numeral]. [title]
     const lines = outline.split('\n');
     let sections: string[] = [];
@@ -523,6 +551,3 @@ export async function getResearchHistory(userId: string): Promise<any[]> {
     );
   }
 };
-
-// Re-export error types
-export { ResearchException, ResearchError } from './researchErrors';
