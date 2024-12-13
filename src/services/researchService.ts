@@ -1,6 +1,5 @@
 import { generateDetailedOutline, generateSection, generateReferences, OutlineItem } from './api';
 import { ResearchError, ResearchException } from './researchErrors';
-import { ResearchMode, ResearchType } from '../store/slices/researchSlice';
 
 interface ResearchSection {
   title: string;
