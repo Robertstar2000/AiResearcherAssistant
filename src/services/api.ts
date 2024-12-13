@@ -30,16 +30,20 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true,
+    flowType: 'pkce',
+    debug: !isProd,
+    storage: window.localStorage
   },
-  global: {
-    headers: {
-      'Access-Control-Allow-Origin': isProd 
-        ? 'https://airesearcherassistant.netlify.app'
-        : '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
-    }
+  db: {
+    schema: 'public'
+  }
+});
+
+// Configure auth settings
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_IN') {
+    console.log('User signed in:', session?.user?.email);
   }
 });
 

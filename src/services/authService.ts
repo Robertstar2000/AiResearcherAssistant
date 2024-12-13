@@ -172,6 +172,25 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
 
     if (error) {
       console.error('Authentication error:', error);
+      
+      // If email not confirmed, try to resend confirmation email
+      if (error.message.includes('Email not confirmed')) {
+        const { error: resendError } = await supabase.auth.resend({
+          type: 'signup',
+          email: credentials.email
+        });
+        
+        if (resendError) {
+          console.error('Error resending confirmation email:', resendError);
+        }
+        
+        throw new ResearchException(
+          ResearchError.AUTH_ERROR,
+          'Please check your email for a confirmation link. A new confirmation email has been sent.',
+          { error }
+        );
+      }
+
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
         error.message || 'Failed to authenticate',
