@@ -128,22 +128,30 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
     // Insert user data into profiles table
     const { error: profileError } = await supabase
       .from('profiles')
-      .insert([
-        {
-          id: data.user.id,
-          email: data.user.email,
-          name: credentials.metadata?.name || '',
-          occupation: credentials.metadata?.occupation || '',
-          geolocation: credentials.metadata?.geolocation || '',
-          updated_at: new Date().toISOString()
-        }
-      ]);
+      .insert({
+        id: data.user.id,
+        email: credentials.email,
+        name: credentials.metadata?.name || '',
+        occupation: credentials.metadata?.occupation || '',
+        geolocation: credentials.metadata?.geolocation || '',
+        updated_at: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
 
     if (profileError) {
       console.error('Error creating user profile:', profileError);
+      // Log detailed error information
+      if (profileError.details) {
+        console.error('Error details:', profileError.details);
+      }
+      if (profileError.hint) {
+        console.error('Error hint:', profileError.hint);
+      }
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
-        'Failed to create user profile',
+        `Failed to create user profile: ${profileError.message}`,
         { error: profileError }
       );
     }
