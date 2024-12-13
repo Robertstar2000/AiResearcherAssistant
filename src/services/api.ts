@@ -356,28 +356,6 @@ export async function generateDetailedOutline(
   mode: string = 'basic',
   type: string = 'general'
 ): Promise<string> {
-  // Define section count based on research mode and type combination
-  const sectionCounts = {
-    basic: {
-      general: { min: 8, max: 12 },
-      Literature: { min: 6, max: 10 },
-      Experement: { min: 8, max: 12 },
-    },
-    advanced: {
-      general: { min: 18, max: 25 },
-      Literature: { min: 10, max: 15 },
-      Experement: { min: 18, max: 25 },
-    },
-    artical: {
-      general: { min: 3, max: 5 },
-      Literature: { min: 3, max: 5 },
-      Experement: { min: 3, max: 5 },
-    },
-  };
-
-  const { min, max } = sectionCounts[mode as keyof typeof sectionCounts]?.[type as keyof (typeof sectionCounts)['basic']] 
-    || sectionCounts.basic.general;
-
   // Define research type requirements
   const typeRequirements = {
     general: 'Focus on providing a comprehensive overview with balanced coverage of all aspects.',
@@ -386,6 +364,11 @@ export async function generateDetailedOutline(
   };
 
   const requirement = typeRequirements[type as keyof typeof typeRequirements] || typeRequirements.general;
+
+  // Extract min and max from the topic string if it contains them
+  const rangeMatch = topic.match(/MUST be within the range of (\d+) to (\d+)/);
+  const min = rangeMatch ? parseInt(rangeMatch[1]) : 3;
+  const max = rangeMatch ? parseInt(rangeMatch[2]) : 25;
 
   const systemPrompt = `You are an expert research outline generator. Create a detailed, well-structured outline for a ${mode} level research paper about "${topic}". 
 The outline should follow these requirements:
