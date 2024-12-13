@@ -375,33 +375,20 @@ export async function generateDetailedOutline(
   // Define section count based on research mode and type combination
   const sectionCounts = {
     basic: {
-      general: { min: 5, max: 7 },
-      technical: { min: 6, max: 8 },
-      academic: { min: 7, max: 9 },
-      analysis: { min: 6, max: 8 },
-      review: { min: 7, max: 9 }
+      general: { min: 8, max: 12 },
+      Literature: { min: 6, max: 10 },
+      Experement: { min: 8, max: 12 },
     },
     advanced: {
-      general: { min: 8, max: 10 },
-      technical: { min: 9, max: 12 },
-      academic: { min: 10, max: 13 },
-      analysis: { min: 9, max: 11 },
-      review: { min: 10, max: 12 }
+      general: { min: 18, max: 25 },
+      Literature: { min: 10, max: 15 },
+      Experement: { min: 18, max: 25 },
     },
-    technical: {
-      general: { min: 10, max: 12 },
-      technical: { min: 12, max: 15 },
-      academic: { min: 11, max: 14 },
-      analysis: { min: 10, max: 13 },
-      review: { min: 11, max: 14 }
+    artical: {
+      general: { min: 3, max: 5 },
+      Literature: { min: 3, max: 5 },
+      Experement: { min: 3, max: 5 },
     },
-    'literature-review': {
-      general: { min: 12, max: 15 },
-      technical: { min: 13, max: 16 },
-      academic: { min: 14, max: 18 },
-      analysis: { min: 13, max: 16 },
-      review: { min: 15, max: 20 }
-    }
   };
 
   const { min, max } = sectionCounts[mode as keyof typeof sectionCounts]?.[type as keyof (typeof sectionCounts)['basic']] 
@@ -410,10 +397,8 @@ export async function generateDetailedOutline(
   // Define research type requirements
   const typeRequirements = {
     general: 'Focus on providing a comprehensive overview with balanced coverage of all aspects.',
-    technical: 'Emphasize technical details, methodologies, and specific implementations.',
-    academic: 'Follow academic research standards with strong theoretical foundation and methodology.',
-    analysis: 'Focus on critical analysis, comparisons, and evaluations.',
-    review: 'Provide extensive literature review and synthesis of existing research.'
+    Literature: 'Provide extensive literature review and synthesis of existing research.',
+    Experement: 'Focus on experimental design, methodology, and results analysis.'
   };
 
   const requirement = typeRequirements[type as keyof typeof typeRequirements] || typeRequirements.general;
@@ -445,8 +430,7 @@ The outline should follow these requirements:
 4. Special Considerations for ${mode} mode:
    ${mode === 'basic' ? '- Focus on fundamental concepts and clear explanations\n   - Avoid overly technical language\n   - Emphasize practical applications' :
      mode === 'advanced' ? '- Include detailed technical discussions\n   - Cover advanced concepts and methodologies\n   - Incorporate current research findings' :
-     mode === 'technical' ? '- Provide in-depth technical analysis\n   - Include specific methodologies and implementations\n   - Cover technical specifications and requirements' :
-     '- Comprehensive literature review\n   - Critical analysis of existing research\n   - Synthesis of different perspectives'}
+     '- Focus on concise presentation\n   - Highlight key findings\n   - Maintain article format standards'}
 
 IMPORTANT: Your outline MUST contain at least ${min} and at most ${max} numbered sections. Each section MUST start with a number followed by a dot (e.g., "1.", "2.", etc.) and MUST start on a new line.
 
