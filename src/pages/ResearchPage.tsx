@@ -146,21 +146,14 @@ export default function ResearchPage() {
 
     try {
       setIsGeneratingOutline(true);
-      setProgressState({ progress: 10, message: 'Generating outline...' });
       const range = getCurrentSectionRange();
-      const outlinePrompt = `Generate a detailed research outline for: ${research.title}
-
-IMPORTANT: This outline MUST contain between ${range.min} and ${range.max} main sections.
-Mode: ${research.mode}
-Type: ${research.type}
-
-Requirements:
-- Generate EXACTLY between ${range.min} and ${range.max} main sections
-- Each section must be properly numbered (1., 2., etc.) or lettered (A., B., etc.)
-- Include descriptive bullet points for each section
-- Ensure comprehensive coverage of the topic`;
       
-      const outline = await generateDetailedOutline(outlinePrompt, research.mode, research.type);
+      // Pass just the title and mode/type, let the API handle the section requirements
+      const outline = await generateDetailedOutline(
+        `${research.title}\ncontain between ${range.min} and ${range.max} main sections`,
+        research.mode,
+        research.type
+      );
 
       if (!outline) {
         throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate outline');
