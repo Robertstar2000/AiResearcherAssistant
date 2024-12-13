@@ -20,15 +20,14 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SaveIcon from '@mui/icons-material/Save';
-import { RootState } from '../store';
 import { 
   setMode, 
   setType, 
-  setSections, 
   setError,
   setTitle,
   ResearchMode,
-  ResearchType
+  ResearchType,
+  setSections
 } from '../store/slices/researchSlice';
 import {
   generateDetailedOutline,
@@ -47,7 +46,7 @@ interface ProgressState {
 
 export default function ResearchPage() {
   const dispatch = useDispatch();
-  const research = useSelector((state: RootState) => state.research);
+  const research = useSelector((state: any) => state.research);
   const [query, setQuery] = useState('');
   const [isGeneratingTarget, setIsGeneratingTarget] = useState(false);
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
@@ -172,44 +171,73 @@ Requirements:
       return;
     }
 
-    setIsGeneratingSections(true);
-    setGeneratedSections([]);
-    dispatch(setError(null));
-    setProgressState({ progress: 0, message: 'Starting section generation...' });
-
     try {
-      // Process each section in the outline sequentially
-      for (const section of parsedOutline) {
-        const sectionKey = `${section.number}`;
-        
-        // Update UI to show which section is being generated
+      setIsGeneratingSections(true);
+      setProgressState({ progress: 0, message: 'Starting research generation...' });
+
+      // Create a dictionary to store section contents
+      const sectionContents: { [key: string]: string } = {};
+      const totalSections = parsedOutline.length;
+
+      // First, display all sections
+      setProgressState({ 
+        progress: 10, 
+        message: `Processing ${totalSections} sections...` 
+      });
+
+      console.log('Outline Sections:');
+      parsedOutline.forEach(section => {
+        console.log(`${section.number}. ${section.title}`);
+        if (section.description) {
+          console.log(`   Description: ${section.description}`);
+        }
+      });
+
+      // Generate content for each section
+      for (let i = 0; i < totalSections; i++) {
+        const section = parsedOutline[i];
+        const progress = Math.floor((i / totalSections) * 80) + 10;
+
         setProgressState({
-          progress: Math.floor((parsedOutline.indexOf(section) / parsedOutline.length) * 100),
-          message: `Generating section ${sectionKey}: ${section.title}`
+          progress,
+          message: `Generating content for section ${i + 1}/${totalSections}: ${section.title}`
         });
 
-        const content = await generateSection(
-          research.title,
-          section.title,
-          section.description || '',
-          research.mode,
-          research.type
-        );
-        
-        // Update the generated content with the new section
-        setGeneratedSections(prev => [...prev, {
-          ...section,
-          content: content
-        }]);
+        try {
+          const content = await generateSection(
+            research.title,
+            section.title,
+            section.description || '',
+            research.mode,
+            research.type
+          );
+
+          sectionContents[section.number] = content;
+
+          // Update the generated content immediately
+          const newSection = {
+            title: section.title,
+            content: content,
+            number: section.number
+          };
+          setGeneratedSections(prev => [...prev, newSection]);
+          
+          // Update Redux store with all current sections
+          const updatedSections = [...generatedSections, newSection];
+          dispatch(setSections(updatedSections));
+
+        } catch (error) {
+          console.error(`Error generating section ${section.title}:`, error);
+          sectionContents[section.number] = `Error generating content for section ${section.title}`;
+        }
       }
 
-      // Update store with generated content
       setProgressState({ progress: 100, message: 'Research generation complete!' });
-      dispatch(setSections(generatedSections));
 
     } catch (error) {
       console.error('Error generating research:', error);
-      dispatch(setError(error instanceof Error ? error.message : 'Failed to generate research'));
+      setProgressState({ progress: 0, message: 'Error generating research' });
+      dispatch(setError('Failed to generate research. Please try again.'));
     } finally {
       setIsGeneratingSections(false);
     }

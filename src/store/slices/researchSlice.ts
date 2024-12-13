@@ -34,7 +34,7 @@ export interface ResearchHistory {
   timestamp: string
 }
 
-interface ResearchState {
+export interface ResearchState {
   title: string
   mode: ResearchMode
   type: ResearchType
