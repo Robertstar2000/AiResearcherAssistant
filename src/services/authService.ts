@@ -138,7 +138,7 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
 export async function authenticateUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
     // First check if the email exists in the database
-    const { data: existingUsers, error: userCheckError } = await supabase
+    const { error: userCheckError } = await supabase
       .from('profiles')
       .select('id')
       .eq('email', credentials.email)
