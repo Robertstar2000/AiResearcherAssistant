@@ -29,9 +29,7 @@ export const ResearchError = {
 
 const convertToMarkdown = (sections: ResearchSection[]): string => {
   let markdown = '';
-  const completedSections = sections.filter(section => section.content && section.title);
-  
-  completedSections.forEach((section, sectionIndex) => {
+  sections.forEach((section, sectionIndex) => {
     if (section.title) {
       markdown += `${sectionIndex + 1}. ${section.title}\n\n`;
     }
@@ -118,7 +116,7 @@ export const generateWordDocument = async (options: DocumentOptions): Promise<Bl
             heading: HeadingLevel.HEADING_1,
             spacing: { before: 400, after: 200 }
           }),
-          ...options.sections.filter(section => section.content && section.title).map((section, index) => 
+          ...options.sections.map((section, index) => 
             new Paragraph({
               text: `${index + 1}. ${section.title}`,
               spacing: { after: 100 },
@@ -159,8 +157,7 @@ export const generatePdfDocument = async (
   references: string[]
 ): Promise<Blob> => {
   try {
-    const completedSections = sections.filter(section => section.content && section.title);
-    const markdown = convertToMarkdown(completedSections);
+    const markdown = convertToMarkdown(sections);
     const pdf = await PDFDocument.create();
     
     // Embed a standard font
@@ -225,8 +222,8 @@ export const generatePdfDocument = async (
 
     // Draw table of contents entries with page numbers
     let pageCounter = 3; // Start from page 3 (after title and TOC)
-    for (let i = 0; i < completedSections.length; i++) {
-      const section = completedSections[i];
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
       const entry = `${i + 1}. ${section.title}`;
       const pageNum = `${pageCounter}`;
       const entryWidth = font.widthOfTextAtSize(entry, fontSize);

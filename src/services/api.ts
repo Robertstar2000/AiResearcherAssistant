@@ -378,19 +378,21 @@ export async function generateDetailedOutline(
   mode: string = 'basic',
   type: string = 'general'
 ): Promise<string> {
-  // Extract section count requirements
+  // Extract section count requirements first
   const rangeMatch = topic.match(/contain between (\d+) and (\d+) main sections/);
   const min = rangeMatch ? parseInt(rangeMatch[1]) : 3;
   const max = rangeMatch ? parseInt(rangeMatch[2]) : 25;
 
-  // Define research type requirements
-  const typeRequirements = {
-    general: 'Focus on providing a comprehensive overview with balanced coverage of all aspects.',
-    literature: 'Provide extensive literature review and synthesis of existing research.',
-    experiment: 'Focus on experimental design, methodology, and results analysis.'
-  };
+  const prompt = `Create a detailed research outline for the following topic. The outline MUST contain between ${min} and ${max} main sections, no more and no less:
 
-  const requirement = typeRequirements[type.toLowerCase() as keyof typeof typeRequirements] || typeRequirements.general;
+Topic: "${topic}"
+
+Requirements:
+1. Generate EXACTLY between ${min} and ${max} main sections
+2. Each section must be numbered (1., 2., etc.)
+3. Include descriptive bullet points for each section
+4. Maintain logical flow between sections
+5. Ensure comprehensive topic coverage`;
 
   const systemPrompt = `You are an expert research outline generator. Create a detailed, well-structured outline for a ${mode} level research paper.
 
@@ -398,8 +400,6 @@ IMPORTANT SECTION COUNT REQUIREMENT:
 - You MUST generate exactly between ${min} and ${max} main sections
 - No more and no less than this range is acceptable
 - Each main section must be numbered (1., 2., etc.)
-
-Topic: "${topic.split('\n')[0]}"
 
 The outline must follow these requirements:
 
@@ -410,7 +410,7 @@ The outline must follow these requirements:
    - Ensure comprehensive coverage of the topic
 
 2. Content Requirements:
-   - ${requirement}
+   - Focus on providing a comprehensive overview with balanced coverage
    - Each section should build upon previous sections
    - Include both theoretical and practical aspects where applicable
    - Consider current research trends and developments
@@ -418,46 +418,43 @@ The outline must follow these requirements:
 3. Format Requirements:
    - Use numbers for main sections (1., 2., etc.)
    - Use bullet points (•) for section descriptions
-   - Each section MUST have multiple descriptive bullet points
-   - Make descriptions specific and actionable
-   - Each section MUST start with a number followed by a dot
-   - Each section MUST start on a new line
-
-4. Special Considerations for ${mode} mode:
-   ${mode === 'basic' ? '- Focus on fundamental concepts and clear explanations\n   - Avoid overly technical language\n   - Emphasize practical applications' :
-     mode === 'advanced' ? '- Include detailed technical discussions\n   - Cover advanced concepts and methodologies\n   - Incorporate current research findings' :
-     '- Focus on concise presentation\n   - Highlight key findings\n   - Maintain article format standards'}
-
-FINAL VERIFICATION:
-Before completing, verify that:
-1. The outline has AT LEAST ${min} main sections
-2. The outline has NO MORE THAN ${max} main sections
-3. All main sections are properly numbered
-4. Each section has descriptive bullet points
-
-Generate the outline now:`;
+   - Each section MUST have multiple descriptive bullet points`;
 
   try {
     const response = await makeApiCall(
-      () => makeGroqApiCall(topic, GROQ_CONFIG.MAX_TOKENS, systemPrompt),
+      () => makeGroqApiCall(prompt, GROQ_CONFIG.MAX_TOKENS, systemPrompt),
       `Failed to generate outline for "${topic}"`,
       0
     );
 
     const outline = response.choices[0].message.content.trim();
     
-    // Validate format and section count
+    // Parse and count sections AFTER outline is generated
     const lines = outline.split('\n');
-    const sections = lines.filter((line: string) => /^\d+\./.test(line.trim()));
+    let sectionCount = 0;
+    let currentSection = null;
     
-    if (sections.length < min || sections.length > max) {
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (/^\d+\./.test(trimmedLine)) {
+        sectionCount++;
+        currentSection = {
+          number: sectionCount.toString(),
+          title: trimmedLine.replace(/^\d+\.\s*/, ''),
+          content: ''
+        };
+      }
+    }
+    
+    // Validate section count after parsing
+    if (sectionCount < min || sectionCount > max) {
       throw new ResearchException(
         ResearchError.GENERATION_ERROR,
-        `Generated outline has ${sections.length} sections, but must be between ${min} and ${max} sections. Regenerating...`
+        `Generated outline has ${sectionCount} sections, but must be between ${min} and ${max} sections. Regenerating...`
       );
     }
 
-    if (!sections.length) {
+    if (!sectionCount) {
       throw new ResearchException(
         ResearchError.GENERATION_ERROR,
         'Generated outline does not follow the required format. Each section must start with a number followed by a dot.'
