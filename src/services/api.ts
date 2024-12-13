@@ -368,15 +368,40 @@ export async function generateDetailedOutline(
   mode: string = 'basic',
   type: string = 'general'
 ): Promise<string> {
-  // Define section count based on research mode
+  // Define section count based on research mode and type combination
   const sectionCounts = {
-    basic: { min: 5, max: 8 },
-    advanced: { min: 8, max: 12 },
-    technical: { min: 10, max: 15 },
-    'literature-review': { min: 12, max: 18 }
+    basic: {
+      general: { min: 5, max: 7 },
+      technical: { min: 6, max: 8 },
+      academic: { min: 7, max: 9 },
+      analysis: { min: 6, max: 8 },
+      review: { min: 7, max: 9 }
+    },
+    advanced: {
+      general: { min: 8, max: 10 },
+      technical: { min: 9, max: 12 },
+      academic: { min: 10, max: 13 },
+      analysis: { min: 9, max: 11 },
+      review: { min: 10, max: 12 }
+    },
+    technical: {
+      general: { min: 10, max: 12 },
+      technical: { min: 12, max: 15 },
+      academic: { min: 11, max: 14 },
+      analysis: { min: 10, max: 13 },
+      review: { min: 11, max: 14 }
+    },
+    'literature-review': {
+      general: { min: 12, max: 15 },
+      technical: { min: 13, max: 16 },
+      academic: { min: 14, max: 18 },
+      analysis: { min: 13, max: 16 },
+      review: { min: 15, max: 20 }
+    }
   };
 
-  const { min, max } = sectionCounts[mode as keyof typeof sectionCounts] || sectionCounts.basic;
+  const { min, max } = sectionCounts[mode as keyof typeof sectionCounts]?.[type as keyof (typeof sectionCounts)['basic']] 
+    || sectionCounts.basic.general;
 
   // Define research type requirements
   const typeRequirements = {
