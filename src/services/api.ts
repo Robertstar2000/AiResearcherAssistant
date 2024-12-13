@@ -432,17 +432,11 @@ The outline must follow these requirements:
     // Parse and count sections AFTER outline is generated
     const lines = outline.split('\n');
     let sectionCount = 0;
-    let currentSection = null;
     
     for (const line of lines) {
       const trimmedLine = line.trim();
       if (/^\d+\./.test(trimmedLine)) {
         sectionCount++;
-        currentSection = {
-          number: sectionCount.toString(),
-          title: trimmedLine.replace(/^\d+\.\s*/, ''),
-          content: ''
-        };
       }
     }
     
