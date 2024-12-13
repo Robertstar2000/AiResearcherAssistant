@@ -435,12 +435,9 @@ The outline must follow these requirements:
 
     const outline = response.choices[0].message.content.trim();
     
-    // Parse and count sections AFTER outline is generated
+    // Parse and count sections based on format: [number|letter|roman numeral]. [title]
     const lines = outline.split('\n');
-    let sectionCount = 0;
-    let lastSectionNumber = 0;
-    let lastSectionLetter = '';
-    let lastRomanNumeral = '';
+    let sections: string[] = [];
     
     // Helper function to convert roman numeral to number
     const romanToInt = (roman: string): number => {
@@ -460,56 +457,49 @@ The outline must follow these requirements:
       }
       return result;
     };
+
+    // Helper function to check if a string is a valid roman numeral
+    const isRomanNumeral = (str: string): boolean => {
+      return /^[IVXLCDM]+$/.test(str.toUpperCase());
+    };
     
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      // Match numbered sections (1., 2.), lettered sections (A., B., a., b.), or roman numerals (I., II., III.)
-      const numberMatch = trimmedLine.match(/^(\d+)\./);
-      const letterMatch = trimmedLine.match(/^([A-Za-z])\./);
-      const romanMatch = trimmedLine.match(/^([IVXLCDM]+)\./);
+    // Regex pattern to match section headers:
+    // Matches: "1. Title" or "A. Title" or "I. Title" or "a. Title" or "IV. Title"
+    const sectionPattern = /^(?:(?:\d+|[A-Za-z]|[IVXLCDM]+)\.\s+)(.+)$/;
+    
+    let currentSection = '';
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
       
-      if (numberMatch) {
-        const currentNumber = parseInt(numberMatch[1]);
-        if (currentNumber > lastSectionNumber) {
-          sectionCount++;
-          lastSectionNumber = currentNumber;
-          lastSectionLetter = '';
-          lastRomanNumeral = '';
+      if (!line) continue; // Skip empty lines
+      
+      const match = line.match(sectionPattern);
+      if (match) {
+        // If we already have a current section, save it
+        if (currentSection) {
+          sections.push(currentSection.trim());
         }
-      } else if (letterMatch) {
-        const currentLetter = letterMatch[1].toLowerCase();
-        if (currentLetter > lastSectionLetter || lastSectionLetter === '') {
-          sectionCount++;
-          lastSectionLetter = currentLetter;
-          lastSectionNumber = 0;
-          lastRomanNumeral = '';
-        }
-      } else if (romanMatch) {
-        const currentRoman = romanMatch[1].toUpperCase();
-        const currentValue = romanToInt(currentRoman);
-        const lastValue = lastRomanNumeral ? romanToInt(lastRomanNumeral) : 0;
-        
-        if (currentValue > lastValue) {
-          sectionCount++;
-          lastRomanNumeral = currentRoman;
-          lastSectionNumber = 0;
-          lastSectionLetter = '';
-        }
+        // Start a new section
+        currentSection = line;
+      } else if (currentSection) {
+        // Add content to current section
+        currentSection += '\n' + line;
       }
     }
     
-    // Validate section count after parsing
-    if (sectionCount < min || sectionCount > max) {
-      throw new ResearchException(
-        ResearchError.GENERATION_ERROR,
-        `Generated outline has ${sectionCount} sections, but must be between ${min} and ${max} sections. Regenerating...`
-      );
+    // Add the last section if it exists
+    if (currentSection) {
+      sections.push(currentSection.trim());
     }
-
-    if (!sectionCount) {
-      throw new ResearchException(
-        ResearchError.GENERATION_ERROR,
-        'Generated outline does not follow the required format. Each section must start with a number or letter followed by a dot.'
+    
+    // Count total valid sections
+    const sectionCount = sections.length;
+    
+    // Validate section count against min/max requirements
+    if (sectionCount < min || sectionCount > max) {
+      throw new Error(
+        `Generated outline has ${sectionCount} sections, but must have between ${min} and ${max} sections.`
       );
     }
 
