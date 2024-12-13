@@ -48,6 +48,7 @@ export default function ResearchPage() {
   const [isGeneratingTarget, setIsGeneratingTarget] = useState(false);
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
   const [isGeneratingSections, setIsGeneratingSections] = useState(false);
+  const [isGeneratingContent, setIsGeneratingContent] = useState(false);
   const [progressState, setProgressState] = useState<ProgressState>({
     progress: 0,
     message: ''
@@ -56,6 +57,17 @@ export default function ResearchPage() {
   const [outlineWordCount, setOutlineWordCount] = useState(0);
   const [parsedOutline, setParsedOutline] = useState<any[]>([]);
   const [generatedSections, setGeneratedSections] = useState<any[]>([]);
+  const [rawOutline, setRawOutline] = useState<string>('');
+  const [showRawOutline, setShowRawOutline] = useState(false);
+  const [showParsedSections, setShowParsedSections] = useState(false);
+  const [showResearchContent, setShowResearchContent] = useState(false);
+  const [researchContent, setResearchContent] = useState<string>('');
+  const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
+  const [parsedSections, setParsedSections] = useState<Array<{
+    title: string;
+    content: string[];
+    level: number;
+  }>>([]);
 
   const handleGenerateTarget = async () => {
     if (!query.trim()) {
@@ -278,6 +290,158 @@ Requirements:
     }
   };
 
+  const handleRawOutlineGenerate = async () => {
+    if (!research.title) {
+      dispatch(setError('Please generate a research target first'));
+      return;
+    }
+
+    try {
+      setIsGeneratingOutline(true);
+      setProgressState({ progress: 0, message: 'Generating raw outline...' });
+
+      const outline = await generateDetailedOutline(
+        research.title,
+        research.mode,
+        research.type
+      );
+
+      if (!outline) {
+        throw new Error('Failed to generate outline');
+      }
+
+      setRawOutline(outline);
+      setShowRawOutline(true);
+      setProgressState({ progress: 100, message: 'Raw outline generation complete!' });
+
+    } catch (error) {
+      console.error('Error generating raw outline:', error);
+      setProgressState({ progress: 0, message: 'Error generating raw outline' });
+      dispatch(setError('Failed to generate raw outline. Please try again.'));
+    } finally {
+      setIsGeneratingOutline(false);
+    }
+  };
+
+  const handleParsedSectionsDisplay = async () => {
+    if (!research.title || !rawOutline) {
+      dispatch(setError('Please generate an outline first'));
+      return;
+    }
+
+    try {
+      setIsGeneratingOutline(true);
+      setProgressState({ progress: 0, message: 'Processing sections...' });
+
+      const sections = parseOutlineText(rawOutline);
+      setParsedSections(sections);
+      setCurrentSectionIndex(0);
+      setShowParsedSections(true);
+      setProgressState({ progress: 100, message: 'Sections processed!' });
+
+    } catch (error) {
+      console.error('Error processing sections:', error);
+      dispatch(setError('Failed to process sections. Please try again.'));
+    } finally {
+      setIsGeneratingOutline(false);
+    }
+  };
+
+  const handleResearchContentDisplay = async () => {
+    if (!research.title || generatedSections.length === 0) {
+      dispatch(setError('Please generate section content first'));
+      return;
+    }
+
+    try {
+      setIsGeneratingContent(true);
+      setProgressState({ progress: 0, message: 'Processing research content...' });
+
+      let contentText = '';
+      generatedSections.forEach(section => {
+        contentText += `### ${section.title}\n\n`;
+        contentText += `${section.content}\n\n`;
+      });
+
+      setResearchContent(contentText);
+      setShowResearchContent(true);
+      setProgressState({ progress: 100, message: 'Research content processed!' });
+
+    } catch (error) {
+      console.error('Error processing research content:', error);
+      dispatch(setError('Failed to process research content. Please try again.'));
+    } finally {
+      setIsGeneratingContent(false);
+    }
+  };
+
+  const parseOutlineText = (text: string): Array<{
+    title: string;
+    content: string[];
+    level: number;
+  }> => {
+    const lines = text.split('\n').filter(line => line.trim());
+    const sections: Array<{
+      title: string;
+      content: string[];
+      level: number;
+    }> = [];
+    let currentSection: {
+      title: string;
+      content: string[];
+      level: number;
+    } | null = null;
+
+    const isSectionStart = (line: string): boolean => {
+      return /^(?:\d+\.|[A-Za-z]\.|•|\*|\-)\s+/.test(line.trim());
+    };
+
+    const getSectionLevel = (line: string): number => {
+      const trimmed = line.trim();
+      if (/^\d+\./.test(trimmed)) return 1;
+      if (/^[A-Za-z]\./.test(trimmed)) return 2;
+      if (/^[•\*\-]/.test(trimmed)) return 3;
+      return 1;
+    };
+
+    const extractTitle = (line: string): string => {
+      return line.trim().replace(/^(?:\d+\.|[A-Za-z]\.|•|\*|\-)\s+/, '');
+    };
+
+    lines.forEach(line => {
+      if (isSectionStart(line)) {
+        if (currentSection) {
+          sections.push(currentSection);
+        }
+        currentSection = {
+          title: extractTitle(line),
+          content: [],
+          level: getSectionLevel(line)
+        };
+      } else if (currentSection) {
+        currentSection.content.push(line.trim());
+      }
+    });
+
+    if (currentSection) {
+      sections.push(currentSection);
+    }
+
+    return sections;
+  };
+
+  const handleNextSection = () => {
+    if (currentSectionIndex < parsedSections.length - 1) {
+      setCurrentSectionIndex(prev => prev + 1);
+    }
+  };
+
+  const handlePrevSection = () => {
+    if (currentSectionIndex > 0) {
+      setCurrentSectionIndex(prev => prev - 1);
+    }
+  };
+
   const countWords = (text: string): number => {
     return text.trim().split(/\s+/).filter(word => word.length > 0).length;
   };
@@ -289,7 +453,7 @@ Requirements:
   };
 
   const renderProgress = () => {
-    if (!isGeneratingOutline && !isGeneratingSections) return null;
+    if (!isGeneratingOutline && !isGeneratingSections && !isGeneratingContent) return null;
     
     return (
       <Box sx={{ width: '100%', mb: 4 }}>
@@ -357,9 +521,65 @@ Requirements:
         >
           <MenuItem value={ResearchType.General}>General Research</MenuItem>
           <MenuItem value={ResearchType.Literature}>Literature Review</MenuItem>
-          <MenuItem value={ResearchType.Experiment}>Experiment Design</MenuItem>
+          <MenuItem value={ResearchType.Experiment}>Experimental Research</MenuItem>
         </Select>
       </FormControl>
+
+      {/* Add buttons for outline generation */}
+      <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+        <Button
+          variant="contained"
+          size="small"
+          onClick={handleRawOutlineGenerate}
+          disabled={isGeneratingOutline || !research.title}
+        >
+          R OL
+        </Button>
+        <Button
+          variant="contained"
+          size="small"
+          onClick={handleParsedSectionsDisplay}
+          disabled={isGeneratingOutline || !rawOutline}
+        >
+          S Outline
+        </Button>
+        <Button
+          variant="contained"
+          size="small"
+          onClick={handleResearchContentDisplay}
+          disabled={isGeneratingContent || generatedSections.length === 0}
+        >
+          Research
+        </Button>
+      </Box>
+
+      {/* Raw Outline Display */}
+      {showRawOutline && (
+        <Paper 
+          elevation={1} 
+          sx={{ 
+            p: 2, 
+            mt: 2, 
+            maxHeight: '300px', 
+            overflowY: 'auto',
+            backgroundColor: '#f5f5f5'
+          }}
+        >
+          <Typography variant="subtitle2" gutterBottom>
+            Raw Outline:
+          </Typography>
+          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {rawOutline}
+          </pre>
+          <Button 
+            size="small" 
+            onClick={() => setShowRawOutline(false)}
+            sx={{ mt: 1 }}
+          >
+            Close
+          </Button>
+        </Paper>
+      )}
     </Paper>
   );
 
@@ -622,6 +842,99 @@ Requirements:
                 </Typography>
                 {renderGeneratedContent()}
               </Box>
+            )}
+
+            {showParsedSections && (
+              <Paper 
+                elevation={1} 
+                sx={{ 
+                  p: 2, 
+                  mt: 2, 
+                  maxHeight: '300px', 
+                  overflowY: 'auto',
+                  backgroundColor: '#f5f5f5'
+                }}
+              >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="subtitle2">
+                    Section {currentSectionIndex + 1} of {parsedSections.length}
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button 
+                      size="small" 
+                      onClick={handlePrevSection}
+                      disabled={currentSectionIndex === 0}
+                    >
+                      Previous
+                    </Button>
+                    <Button 
+                      size="small" 
+                      onClick={handleNextSection}
+                      disabled={currentSectionIndex === parsedSections.length - 1}
+                    >
+                      Next
+                    </Button>
+                    <Button 
+                      size="small" 
+                      onClick={() => setShowParsedSections(false)}
+                    >
+                      Close
+                    </Button>
+                  </Box>
+                </Box>
+                
+                {parsedSections[currentSectionIndex] && (
+                  <Box>
+                    <Typography 
+                      variant="subtitle1" 
+                      sx={{ 
+                        fontWeight: 'bold',
+                        ml: (parsedSections[currentSectionIndex].level - 1) * 2
+                      }}
+                    >
+                      {parsedSections[currentSectionIndex].title}
+                    </Typography>
+                    {parsedSections[currentSectionIndex].content.map((line, idx) => (
+                      <Typography 
+                        key={idx} 
+                        sx={{ 
+                          ml: parsedSections[currentSectionIndex].level * 2,
+                          whiteSpace: 'pre-wrap'
+                        }}
+                      >
+                        {line}
+                      </Typography>
+                    ))}
+                  </Box>
+                )}
+              </Paper>
+            )}
+
+            {showResearchContent && (
+              <Paper 
+                elevation={1} 
+                sx={{ 
+                  p: 2, 
+                  mt: 2, 
+                  maxHeight: '300px', 
+                  overflowY: 'auto',
+                  backgroundColor: '#f5f5f5'
+                }}
+              >
+                <Typography variant="subtitle2" gutterBottom>
+                  Research Content:
+                </Typography>
+                <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {researchContent}
+                </div>
+                <Button 
+                  size="small" 
+                  onClick={() => setShowResearchContent(false)}
+                  sx={{ mt: 1 }}
+                >
+                  Close
+                </Button>
+              </Paper>
             )}
 
             {renderProgress()}
