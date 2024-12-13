@@ -29,7 +29,9 @@ export const ResearchError = {
 
 const convertToMarkdown = (sections: ResearchSection[]): string => {
   let markdown = '';
-  sections.forEach((section, sectionIndex) => {
+  const completedSections = sections.filter(section => section.content && section.title);
+  
+  completedSections.forEach((section, sectionIndex) => {
     if (section.title) {
       markdown += `${sectionIndex + 1}. ${section.title}\n\n`;
     }
@@ -38,7 +40,7 @@ const convertToMarkdown = (sections: ResearchSection[]): string => {
     }
     if (section.subsections && section.subsections.length > 0) {
       section.subsections.forEach((subsection: SubSection, subIndex: number) => {
-        const letter = String.fromCharCode(97 + subIndex); // 97 is ASCII for 'a'
+        const letter = String.fromCharCode(97 + subIndex);
         if (subsection.title) {
           markdown += `${letter}. ${subsection.title}\n\n`;
         }
@@ -116,7 +118,7 @@ export const generateWordDocument = async (options: DocumentOptions): Promise<Bl
             heading: HeadingLevel.HEADING_1,
             spacing: { before: 400, after: 200 }
           }),
-          ...options.sections.map((section, index) => 
+          ...options.sections.filter(section => section.content && section.title).map((section, index) => 
             new Paragraph({
               text: `${index + 1}. ${section.title}`,
               spacing: { after: 100 },
@@ -157,7 +159,8 @@ export const generatePdfDocument = async (
   references: string[]
 ): Promise<Blob> => {
   try {
-    const markdown = convertToMarkdown(sections);
+    const completedSections = sections.filter(section => section.content && section.title);
+    const markdown = convertToMarkdown(completedSections);
     const pdf = await PDFDocument.create();
     
     // Embed a standard font
@@ -170,13 +173,14 @@ export const generatePdfDocument = async (
     const fontSize = 12;
     const titleSize = 24;
     const headerSize = 16;
-    let currentY = height - 200;
+    let currentY = height - 100; // Adjusted Y position for better title placement
 
-    // Draw title centered
+    // Draw title centered with proper width calculation
     const title = metadata.title;
     const titleWidth = boldFont.widthOfTextAtSize(title, titleSize);
+    const titleX = Math.max(50, (width - titleWidth) / 2); // Ensure minimum margin of 50
     currentPage.drawText(title, {
-      x: (width - titleWidth) / 2,
+      x: titleX,
       y: currentY,
       font: boldFont,
       size: titleSize
@@ -210,32 +214,61 @@ export const generatePdfDocument = async (
 
     // Draw Table of Contents header
     const tocTitle = 'Table of Contents';
+    const tocTitleWidth = boldFont.widthOfTextAtSize(tocTitle, headerSize);
     currentPage.drawText(tocTitle, {
-      x: 50,
+      x: Math.max(50, (width - tocTitleWidth) / 2),
       y: currentY,
       font: boldFont,
       size: headerSize
     });
     currentY -= 50;
 
-    // Draw table of contents entries
-    for (let i = 0; i < sections.length; i++) {
-      const section = sections[i];
+    // Draw table of contents entries with page numbers
+    let pageCounter = 3; // Start from page 3 (after title and TOC)
+    for (let i = 0; i < completedSections.length; i++) {
+      const section = completedSections[i];
       const entry = `${i + 1}. ${section.title}`;
-      const entryHeight = font.heightAtSize(fontSize);
+      const pageNum = `${pageCounter}`;
+      const entryWidth = font.widthOfTextAtSize(entry, fontSize);
+      const pageNumWidth = font.widthOfTextAtSize(pageNum, fontSize);
+      const dotWidth = font.widthOfTextAtSize('.', fontSize);
+      const availableWidth = width - 140 - pageNumWidth; // 70 margin on each side
       
-      if (currentY - entryHeight < 50) {
+      // Calculate dots
+      const dotsCount = Math.floor((availableWidth - entryWidth) / dotWidth);
+      const dots = '.'.repeat(Math.max(0, dotsCount));
+
+      if (currentY < 50) {
         currentPage = pdf.addPage();
         currentY = height - 100;
       }
 
+      // Draw entry
       currentPage.drawText(entry, {
         x: 70,
         y: currentY,
         font: font,
         size: fontSize
       });
+
+      // Draw dots
+      currentPage.drawText(dots, {
+        x: 70 + entryWidth,
+        y: currentY,
+        font: font,
+        size: fontSize
+      });
+
+      // Draw page number
+      currentPage.drawText(pageNum, {
+        x: width - 70 - pageNumWidth,
+        y: currentY,
+        font: font,
+        size: fontSize
+      });
+
       currentY -= 30;
+      pageCounter++; // Increment page counter for next section
     }
 
     // Content pages
