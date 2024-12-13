@@ -226,19 +226,23 @@ export default function ResearchPage() {
 
     try {
       setIsGeneratingSections(true);
-      setProgressState({ progress: 0, message: 'Starting research generation...' });
+      setProgressState({ progress: 0, message: 'Initializing research generation...' });
+
+      // Clear any previous errors
+      dispatch(setError(null));
 
       // Create a dictionary to store section contents
       const sectionContents: { [key: string]: string } = {};
       const totalSections = parsedOutline.length;
+      let successfulSections = 0;
 
       // First, display all sections
       setProgressState({ 
-        progress: 10, 
-        message: `Processing ${totalSections} sections...` 
+        progress: 5, 
+        message: `Analyzing ${totalSections} sections...` 
       });
 
-      console.log('Outline Sections:');
+      console.log('Processing Research Sections:');
       parsedOutline.forEach(section => {
         console.log(`${section.number}. ${section.title}`);
         if (section.description) {
@@ -249,14 +253,15 @@ export default function ResearchPage() {
       // Generate content for each section
       for (let i = 0; i < totalSections; i++) {
         const section = parsedOutline[i];
-        const progress = Math.floor((i / totalSections) * 80) + 10;
+        const progress = Math.floor((i / totalSections) * 85) + 10;
 
         setProgressState({
           progress,
-          message: `Generating content for section ${i + 1}/${totalSections}: ${section.title}`
+          message: `Writing section ${i + 1}/${totalSections}: ${section.title}`
         });
 
         try {
+          // Generate section content
           const content = await generateSection(
             research.title,
             section.title,
@@ -265,7 +270,15 @@ export default function ResearchPage() {
             research.type
           );
 
+          if (!content || content.length < 100) {
+            throw new ResearchException(
+              ResearchError.GENERATION_ERROR,
+              `Generated content for section "${section.title}" is too short`
+            );
+          }
+
           sectionContents[section.number] = content;
+          successfulSections++;
 
           // Update the generated content immediately
           const newSection = {
@@ -280,17 +293,37 @@ export default function ResearchPage() {
           dispatch(setSections(updatedSections));
 
         } catch (error) {
-          console.error(`Error generating section ${section.title}:`, error);
-          sectionContents[section.number] = `Error generating content for section ${section.title}`;
+          console.error(`Error generating section "${section.title}":`, error);
+          const errorMessage = error instanceof ResearchException ? error.message : 'Failed to generate content';
+          sectionContents[section.number] = `Error: ${errorMessage}`;
+          
+          // Show error but continue with other sections
+          dispatch(setError(`Warning: Failed to generate section "${section.title}". Continuing with remaining sections...`));
         }
       }
 
-      setProgressState({ progress: 100, message: 'Research generation complete!' });
+      // Final status update
+      if (successfulSections === totalSections) {
+        setProgressState({ 
+          progress: 100, 
+          message: 'Research paper generation complete!' 
+        });
+      } else {
+        setProgressState({ 
+          progress: 100, 
+          message: `Research generation completed with ${totalSections - successfulSections} failed sections` 
+        });
+      }
 
     } catch (error) {
       console.error('Error generating research:', error);
       setProgressState({ progress: 0, message: 'Error generating research' });
-      dispatch(setError('Failed to generate research. Please try again.'));
+      
+      if (error instanceof ResearchException) {
+        dispatch(setError(error.message));
+      } else {
+        dispatch(setError('Failed to generate research. Please try again.'));
+      }
     } finally {
       setIsGeneratingSections(false);
     }

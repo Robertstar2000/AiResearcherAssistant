@@ -236,26 +236,40 @@ export const generateSection = async (
   return makeApiCall(
     async () => {
       const response = await makeGroqApiCall(
-        `Generate detailed content for section ${sectionTitle} of a ${mode} level research paper:
+        `You are an expert academic writer. Generate comprehensive content for the following section of a research paper.
 
-Topic: ${topic}
+Research Topic: "${topic}"
+Section Title: "${sectionTitle}"
+Research Level: ${mode}
 Research Type: ${type}
-Section: ${sectionTitle}
 
-Key Points to Cover:
+Key Points to Address:
 ${bulletPoints}
 
-Instructions:
-1. Generate comprehensive content that addresses all the bullet points
-2. Follow ${mode} level depth and complexity
-3. Maintain academic writing style
-4. Include relevant examples and evidence
-5. Ensure logical flow and transitions`,
-        1000
+Writing Requirements:
+1. Write in a clear, academic style appropriate for ${mode} level research
+2. Cover ALL the key points thoroughly and systematically
+3. Include relevant examples, data, or evidence to support main points
+4. Maintain logical flow and smooth transitions between ideas
+5. Use appropriate terminology for ${type} research
+6. Ensure proper paragraph structure and organization
+7. Write approximately 500-1000 words depending on section importance
+8. Include in-text citations where appropriate (in parenthetical format)
+
+Additional Guidelines:
+- Start with a brief introduction to the section topic
+- Develop each key point with supporting evidence
+- End with a clear conclusion or transition
+- Maintain academic tone throughout
+- Be specific and precise in language use
+
+Format the content in clear paragraphs with proper academic structure.`,
+        2000,
+        `You are an expert academic writer specializing in ${type} research at the ${mode} level. Your goal is to produce clear, well-structured, and academically rigorous content.`
       );
       return response.choices[0].message.content.trim();
     },
-    `Failed to generate section content for "${sectionTitle}"`
+    `Failed to generate content for section "${sectionTitle}"`
   );
 };
 
