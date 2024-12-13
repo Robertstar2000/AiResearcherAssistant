@@ -199,8 +199,20 @@ export const generateTitle = async (topic: string): Promise<string> => {
   return makeApiCall(
     async () => {
       const response = await makeGroqApiCall(
-        `Generate a concise, engaging title for a research paper about: ${topic}`,
-        100
+        `You are a research title expert. Transform this topic into a clear, focused research title.
+
+Topic: "${topic}"
+
+Requirements:
+1. Create a specific, well-defined research title
+2. Use academic language and terminology
+3. Make it concise but informative
+4. Include key variables or relationships
+5. Ensure it reflects a research question or objective
+
+Format your response as a single research title, without quotes or extra formatting.`,
+        200,
+        `You are an expert at crafting academic research titles. Your goal is to transform broad topics into precise, engaging research titles that clearly communicate the research objective.`
       );
       return response.choices[0].message.content.trim();
     },

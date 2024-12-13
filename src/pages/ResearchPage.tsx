@@ -120,20 +120,41 @@ export default function ResearchPage() {
 
     try {
       setIsGeneratingTarget(true);
-      setProgressState({ progress: 0, message: 'Generating research target...' });
+      setProgressState({ progress: 10, message: 'Analyzing research topic...' });
 
+      // Clear any previous errors
+      dispatch(setError(null));
+
+      // Generate the research target title
       const generatedTitle = await generateTitle(query);
       if (!generatedTitle) {
-        throw new Error('Failed to generate research target');
+        throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate research target');
       }
 
+      // Validate the generated title
+      if (generatedTitle.length < 10) {
+        throw new ResearchException(
+          ResearchError.VALIDATION_ERROR,
+          'Generated title is too short. Please try again with a more specific topic.'
+        );
+      }
+
+      setProgressState({ progress: 50, message: 'Finalizing research target...' });
+      
+      // Update the title in the store
       dispatch(setTitle(generatedTitle));
-      setProgressState({ progress: 100, message: 'Target generation complete!' });
+      
+      setProgressState({ progress: 100, message: 'Research target generation complete!' });
 
     } catch (error) {
       console.error('Error generating target:', error);
       setProgressState({ progress: 0, message: 'Error generating target' });
-      dispatch(setError('Failed to generate target. Please try again.'));
+      
+      if (error instanceof ResearchException) {
+        dispatch(setError(error.message));
+      } else {
+        dispatch(setError('Failed to generate target. Please try again with a more specific topic.'));
+      }
     } finally {
       setIsGeneratingTarget(false);
     }
