@@ -205,60 +205,44 @@ export async function generateSection(
   topic: string,
   sectionTitle: string,
   sectionDescription: string,
-  isSubsection: boolean,
-  outline: OutlineItem[]
+  mode: string = 'basic',
+  type: string = 'general'
 ): Promise<string> {
-  const outlineContext = outline
-    .map(item => `${item.number}. ${item.title}: ${item.description}`)
+  const bulletPoints = sectionDescription
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.startsWith('•') || line.startsWith('-'))
     .join('\n');
 
   const prompt = `
-Generate detailed content for the following section of a research paper:
+Generate detailed content for section ${sectionTitle} of a ${mode} level research paper:
 
 Topic: ${topic}
+Research Type: ${type}
 Section: ${sectionTitle}
-Description: ${sectionDescription}
-Type: ${isSubsection ? 'Subsection' : 'Main Section'}
 
-Full Outline Context:
-${outlineContext}
+Key Points to Cover:
+${bulletPoints}
 
-Please generate comprehensive, academic-quality content for this specific section that:
-1. Directly addresses the section title and description
-2. Maintains proper flow with other sections
-3. Uses academic language and proper citations
-4. Provides detailed analysis and examples where appropriate
-5. Stays focused on the section's specific topic while maintaining context with the overall research
+Instructions:
+1. Generate comprehensive content that addresses all the bullet points
+2. Follow ${mode} level depth and complexity
+3. Maintain academic writing style
+4. Include relevant examples and evidence
+5. Ensure logical flow and transitions
 
-Generate the content now:`;
+Generate the section content now:`;
 
   try {
     const response = await makeApiCall(
       () => makeGroqApiCall(prompt, GROQ_CONFIG.MAX_TOKENS),
-      `Failed to generate section "${sectionTitle}"`,
-      GROQ_CONFIG.MAX_RETRIES
+      `Failed to generate section content for "${sectionTitle}"`,
+      0
     );
 
-    const content = response.choices[0].message.content.trim();
-    const wordCount = content.split(/\s+/).length;
-
-    // If content is too short and we haven't exceeded max retries, try again
-    if (wordCount < 2000 && GROQ_CONFIG.MAX_RETRIES > 0) {
-      console.log(`Generated content too short (${wordCount}/2000 words) for "${sectionTitle}". Retrying... (${GROQ_CONFIG.MAX_RETRIES})`);
-      await waitBetweenCalls(GROQ_CONFIG.MAX_RETRIES - 1);
-      return generateSection(topic, sectionTitle, sectionDescription, isSubsection, outline);
-    }
-
-    return content;
+    return response.choices[0].message.content.trim();
   } catch (error) {
-    if (error instanceof ResearchException && error.code === ResearchError.RATE_LIMIT_ERROR) {
-      if (GROQ_CONFIG.MAX_RETRIES > 0) {
-        console.log(`Rate limit hit for "${sectionTitle}". Retrying... (${GROQ_CONFIG.MAX_RETRIES})`);
-        await waitBetweenCalls(GROQ_CONFIG.MAX_RETRIES - 1);
-        return generateSection(topic, sectionTitle, sectionDescription, isSubsection, outline);
-      }
-    }
-    console.error(`Failed to generate section "${sectionTitle}":`, error);
+    console.error('Error in generateSection:', error);
     throw error;
   }
 };

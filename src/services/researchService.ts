@@ -26,7 +26,9 @@ export async function parseDetailedOutline(
 
   for (const line of lines) {
     // Check for section headers (numbered or lettered)
-    const sectionMatch = line.match(/^(\d+|[a-z])\.\s+(.+)/i);
+    const sectionMatch = line.match(/^(\d+)\.\s+(.+)/);
+    const subsectionMatch = line.match(/^([a-z])\.\s+(.+)/i);
+
     if (sectionMatch) {
       // Save previous item if exists
       if (currentItem) {
@@ -35,19 +37,31 @@ export async function parseDetailedOutline(
         currentDescription = [];
       }
 
-      // Create new item
-      const isSubsection = /^[a-z]/i.test(sectionMatch[1]);
+      // Create new main section
       currentItem = {
         number: sectionMatch[1],
         title: sectionMatch[2],
         description: '',
-        isSubsection,
-        level: isSubsection ? currentLevel + 1 : 1
+        isSubsection: false,
+        level: 1
       };
-
-      if (!isSubsection) {
-        currentLevel = 1;
+      currentLevel = 1;
+    } else if (subsectionMatch) {
+      // Save previous item if exists
+      if (currentItem) {
+        currentItem.description = currentDescription.join('\n');
+        items.push(currentItem);
+        currentDescription = [];
       }
+
+      // Create new subsection
+      currentItem = {
+        number: subsectionMatch[1],
+        title: subsectionMatch[2],
+        description: '',
+        isSubsection: true,
+        level: currentLevel + 1
+      };
     } else if (line.startsWith('•') || line.startsWith('-')) {
       // Add bullet points to description
       if (currentItem) {
@@ -76,33 +90,20 @@ export async function parseDetailedOutline(
   // Get section count requirements
   const sectionCounts = {
     basic: {
-      general: { min: 5, max: 7 },
-      technical: { min: 6, max: 8 },
-      academic: { min: 7, max: 9 },
-      analysis: { min: 6, max: 8 },
-      review: { min: 7, max: 9 }
+      general: { min: 8, max: 12 },
+      Literature: { min: 6, max: 10 },
+      Experement: { min: 8, max: 12 },
     },
     advanced: {
-      general: { min: 8, max: 10 },
-      technical: { min: 9, max: 12 },
-      academic: { min: 10, max: 13 },
-      analysis: { min: 9, max: 11 },
-      review: { min: 10, max: 12 }
+      general: { min: 18, max: 25 },
+      Literature: { min: 10, max: 15 },
+      Experement: { min: 18, max: 25 },
     },
-    technical: {
-      general: { min: 10, max: 12 },
-      technical: { min: 12, max: 15 },
-      academic: { min: 11, max: 14 },
-      analysis: { min: 10, max: 13 },
-      review: { min: 11, max: 14 }
+    artical: {
+      general: { min: 3, max: 5 },
+      Literature: { min: 3, max: 5 },
+      Experement: { min: 3, max: 5 },
     },
-    'literature-review': {
-      general: { min: 12, max: 15 },
-      technical: { min: 13, max: 16 },
-      academic: { min: 14, max: 18 },
-      analysis: { min: 13, max: 16 },
-      review: { min: 15, max: 20 }
-    }
   };
 
   const { min, max } = sectionCounts[mode as keyof typeof sectionCounts]?.[type as keyof (typeof sectionCounts)['basic']] 
@@ -114,7 +115,8 @@ export async function parseDetailedOutline(
   // Validate section count
   if (topLevelSections < min || topLevelSections > max) {
     console.log(`Found ${topLevelSections} top-level sections, expected ${min}-${max}`);
-    throw new Error(`Generated outline has ${topLevelSections} sections, but should have between ${min} and ${max} sections. Please regenerate.`);
+    // Instead of throwing error, return empty array to trigger regeneration
+    return [];
   }
 
   return processedItems;
@@ -175,8 +177,8 @@ export async function generateResearch(
           topic,
           item.title,
           item.description || '',
-          false,
-          outlineItems
+          mode,
+          type
         );
         
         const wordCount = content.split(/\s+/).length;

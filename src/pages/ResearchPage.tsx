@@ -134,12 +134,7 @@ Requirements:
         throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate outline');
       }
 
-      // Parse outline into sections
-      setProgressState({ progress: 30, message: 'Processing outline...' });
-      const outlineItems = await parseDetailedOutline(outline, research.mode, research.type);
-      setParsedOutline(outlineItems);
-      setOutlineWordCount(calculateOutlineWordCount(outlineItems));
-      setProgressState({ progress: 100, message: 'Outline generation complete!' });
+      handleOutlineGenerated(outline);
       
     } catch (error) {
       console.error('Error generating outline:', error);
@@ -149,8 +144,30 @@ Requirements:
     }
   };
 
+  const handleOutlineGenerated = async (outline: string) => {
+    try {
+      setProgressState({ progress: 30, message: 'Processing outline...' });
+      const parsedOutline = await parseDetailedOutline(outline, research.mode, research.type);
+      
+      // If parsing returns empty array, regenerate outline
+      if (!parsedOutline.length) {
+        console.log('Invalid section count, regenerating outline...');
+        setProgressState({ progress: 10, message: 'Regenerating outline...' });
+        handleGenerateOutline();
+        return;
+      }
+
+      setParsedOutline(parsedOutline);
+      setOutlineWordCount(calculateOutlineWordCount(parsedOutline));
+      setProgressState({ progress: 100, message: 'Outline generation complete!' });
+    } catch (error) {
+      console.error('Error parsing outline:', error);
+      setProgressState({ progress: 0, message: 'Error processing outline' });
+    }
+  };
+
   const handleGenerateResearch = async () => {
-    if (!showOutline || parsedOutline.length === 0) {
+    if (!showOutline || !parsedOutline || parsedOutline.length === 0) {
       dispatch(setError('Please review the outline first'));
       return;
     }
@@ -175,8 +192,8 @@ Requirements:
           research.title,
           section.title,
           section.description || '',
-          section.isSubsection,
-          parsedOutline
+          research.mode,
+          research.type
         );
         
         // Update the generated content with the new section
