@@ -127,19 +127,17 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
 
     // Insert user data into profiles table
     const { error: profileError } = await supabase
-      .from('profiles')
+      .from('AiResearcherAssistant')
       .insert({
         id: data.user.id,
-        email: credentials.email,
-        name: credentials.metadata?.name || '',
-        occupation: credentials.metadata?.occupation || '',
-        geolocation: credentials.metadata?.geolocation || '',
-        updated_at: new Date().toISOString(),
+        "User-Name": credentials.metadata?.name || '',
+        "PassWord": credentials.password,
+        "Occupation": credentials.metadata?.occupation || '',
+        "Location": credentials.metadata?.geolocation || '',
         created_at: new Date().toISOString()
       });
 
     if (profileError) {
-      // Log the entire error object to understand its structure
       console.error('Full profile error object:', JSON.stringify(profileError, null, 2));
       
       const errorMessage = typeof profileError === 'object' && profileError !== null
