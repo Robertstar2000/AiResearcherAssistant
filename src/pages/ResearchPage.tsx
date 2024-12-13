@@ -123,7 +123,7 @@ Additional Context:
 - The target audience should match the research mode and type
 - The structure should follow academic standards for this type of research
 
-${getSectionRecommendations(research.mode)}
+- **The number of outline sections in the outline MUST be within the range of ${getSectionRecommendations(research.mode)}
 
 Requirements:
 - Create a clear, hierarchical structure
@@ -525,32 +525,59 @@ Requirements:
         </Select>
       </FormControl>
 
-      {/* Add buttons for outline generation */}
+      {/* Update buttons section to dots */}
       <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
         <Button
           variant="contained"
           size="small"
           onClick={handleRawOutlineGenerate}
           disabled={isGeneratingOutline || !research.title}
-        >
-          R OL
-        </Button>
+          sx={{
+            minWidth: '24px',
+            width: '24px',
+            height: '24px',
+            borderRadius: '50%',
+            padding: 0,
+            backgroundColor: '#4CAF50', // Green
+            '&:hover': {
+              backgroundColor: '#45a049'
+            }
+          }}
+        />
         <Button
           variant="contained"
           size="small"
           onClick={handleParsedSectionsDisplay}
           disabled={isGeneratingOutline || !rawOutline}
-        >
-          S Outline
-        </Button>
+          sx={{
+            minWidth: '24px',
+            width: '24px',
+            height: '24px',
+            borderRadius: '50%',
+            padding: 0,
+            backgroundColor: '#2196F3', // Blue
+            '&:hover': {
+              backgroundColor: '#1976D2'
+            }
+          }}
+        />
         <Button
           variant="contained"
           size="small"
           onClick={handleResearchContentDisplay}
           disabled={isGeneratingContent || generatedSections.length === 0}
-        >
-          Research
-        </Button>
+          sx={{
+            minWidth: '24px',
+            width: '24px',
+            height: '24px',
+            borderRadius: '50%',
+            padding: 0,
+            backgroundColor: '#FF9800', // Orange
+            '&:hover': {
+              backgroundColor: '#F57C00'
+            }
+          }}
+        />
       </Box>
 
       {/* Raw Outline Display */}
