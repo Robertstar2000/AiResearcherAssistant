@@ -11,7 +11,7 @@ interface UserMetadata {
 }
 
 interface AuthUser {
-  id: string;
+  id: number;
   email: string;
   name: string;
   occupation?: string;
@@ -25,7 +25,7 @@ interface AuthCredentials {
 }
 
 const createAuthUser = (user: SupabaseUser, metadata: UserMetadata): AuthUser => ({
-  id: user.id,
+  id: parseInt(user.id),
   email: user.email || '',
   name: metadata.name || '',
   occupation: metadata.occupation || '',
@@ -126,10 +126,11 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
     }
 
     // Insert user data into profiles table
+    const timestamp = Date.now();
     const { error: profileError } = await supabase
       .from('AiResearcherAssistant')
       .insert({
-        id: data.user.id,
+        id: timestamp,
         "User-Name": credentials.metadata?.name || '',
         "PassWord": credentials.password,
         "Occupation": credentials.metadata?.occupation || '',
