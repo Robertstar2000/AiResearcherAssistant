@@ -5,19 +5,23 @@ import path from 'path'
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const isProd = mode === 'production'
   
   console.log('Vite Environment Variables:')
+  console.log('Environment:', mode)
   console.log('VITE_SUPABASE_URL:', env.VITE_SUPABASE_URL ? 'exists' : 'missing')
   console.log('VITE_SUPABASE_KEY:', env.VITE_SUPABASE_KEY ? 'exists' : 'missing')
   console.log('VITE_GROQ_API_KEY:', env.VITE_GROQ_API_KEY ? 'exists' : 'missing')
 
   return {
     define: {
-      'process.env': {
+      'import.meta.env': {
         VITE_SUPABASE_URL: JSON.stringify(env.VITE_SUPABASE_URL),
         VITE_SUPABASE_KEY: JSON.stringify(env.VITE_SUPABASE_KEY),
         VITE_GROQ_API_KEY: JSON.stringify(env.VITE_GROQ_API_KEY),
-        NODE_ENV: JSON.stringify(mode)
+        PROD: isProd,
+        DEV: !isProd,
+        MODE: JSON.stringify(mode)
       }
     },
     plugins: [react()],
@@ -45,7 +49,16 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: 'https://api.groq.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api/, '')
+          secure: true,
+          rewrite: (path) => path.replace(/^\/api/, ''),
+          headers: {
+            'Access-Control-Allow-Origin': isProd 
+              ? 'https://airesearcherassistant.netlify.app' 
+              : '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization',
+            'Access-Control-Allow-Credentials': 'true'
+          }
         }
       }
     },

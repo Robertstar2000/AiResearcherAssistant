@@ -5,16 +5,16 @@ import { ResearchException, ResearchError } from './researchErrors';
 // API Configuration
 const isProd = import.meta.env.PROD;
 const supabaseUrl = isProd 
-  ? process.env.VITE_SUPABASE_URL 
+  ? import.meta.env.VITE_SUPABASE_URL 
   : import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = isProd 
-  ? process.env.VITE_SUPABASE_KEY 
+  ? import.meta.env.VITE_SUPABASE_KEY 
   : import.meta.env.VITE_SUPABASE_KEY;
 const GROQ_API_KEY = isProd 
-  ? process.env.VITE_GROQ_API_KEY 
+  ? import.meta.env.VITE_GROQ_API_KEY 
   : import.meta.env.VITE_GROQ_API_KEY;
 const GROQ_API_URL = isProd 
-  ? (process.env.VITE_GROQ_API_URL || 'https://api.groq.com/openai/v1/chat/completions')
+  ? (import.meta.env.VITE_GROQ_API_URL || 'https://api.groq.com/openai/v1/chat/completions')
   : (import.meta.env.VITE_GROQ_API_URL || 'https://api.groq.com/openai/v1/chat/completions');
 
 if (!supabaseUrl || !supabaseKey) {
@@ -36,7 +36,9 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     headers: {
       'Access-Control-Allow-Origin': isProd 
         ? 'https://airesearcherassistant.netlify.app'
-        : '*'
+        : '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
     }
   }
 });
