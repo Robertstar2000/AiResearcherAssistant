@@ -99,10 +99,16 @@ export default function ResearchPage() {
 
   // Function to get current section range
   const getCurrentSectionRange = (): { min: number; max: number } => {
-    if (!research.mode || !research.type) {
-      return { min: 10, max: 10 }; // Default values
+    const mode = research.mode || ResearchMode.Basic;
+    const type = research.type || ResearchType.General;
+    
+    // Ensure we have valid mode and type
+    if (!(mode in sectionRanges) || !(type in sectionRanges[mode])) {
+      console.warn(`Invalid mode (${mode}) or type (${type}), using default range`);
+      return { min: 5, max: 10 };
     }
-    return sectionRanges[research.mode][research.type] ?? { min: 4, max: 6 };
+    
+    return sectionRanges[mode][type];
   };
 
   const handleGenerateTarget = async () => {
@@ -142,8 +148,17 @@ export default function ResearchPage() {
       setIsGeneratingOutline(true);
       setProgressState({ progress: 10, message: 'Generating outline...' });
       const range = getCurrentSectionRange();
-      const outlinePrompt = `${research.title}
-Section Count Requirements: The outline MUST contain between ${range.min} and ${range.max} main sections (no more, no less).`;
+      const outlinePrompt = `Generate a detailed research outline for: ${research.title}
+
+IMPORTANT: This outline MUST contain between ${range.min} and ${range.max} main sections.
+Mode: ${research.mode}
+Type: ${research.type}
+
+Requirements:
+- Generate EXACTLY between ${range.min} and ${range.max} main sections
+- Each section must be properly numbered (1., 2., etc.) or lettered (A., B., etc.)
+- Include descriptive bullet points for each section
+- Ensure comprehensive coverage of the topic`;
       
       const outline = await generateDetailedOutline(outlinePrompt, research.mode, research.type);
 
