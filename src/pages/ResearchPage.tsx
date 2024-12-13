@@ -31,7 +31,8 @@ import {
   generateSection,
   ResearchException,
   ResearchError,
-  generateTitle
+  generateTitle,
+  expandResearchTopic
 } from '../services/api';
 import { parseDetailedOutline } from '../services/researchService';
 import { generateWordDocument, generatePdfDocument, downloadDocument } from '../services/documentService';
@@ -139,18 +140,23 @@ export default function ResearchPage() {
   };
 
   const handleGenerateOutline = async () => {
-    if (!research.title) {
-      dispatch(setError('Please generate a research target first'));
-      return;
-    }
-
     try {
       setIsGeneratingOutline(true);
-      const range = getCurrentSectionRange();
+      setProgressState({ progress: 10, message: 'Refining research topic...' });
       
-      // Pass just the title and mode/type, let the API handle the section requirements
+      const range = getCurrentSectionRange();
+
+      // First, expand and refine the research topic
+      const expandedTopic = await expandResearchTopic(research.title, research.mode, research.type);
+      if (!expandedTopic) {
+        throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to refine research topic');
+      }
+
+      setProgressState({ progress: 30, message: 'Generating outline...' });
+      
+      // Generate outline with the expanded topic
       const outline = await generateDetailedOutline(
-        `${research.title}\ncontain between ${range.min} and ${range.max} main sections`,
+        `${expandedTopic}\ncontain between ${range.min} and ${range.max} main sections`,
         research.mode,
         research.type
       );

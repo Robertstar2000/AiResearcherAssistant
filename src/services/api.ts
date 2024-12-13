@@ -352,6 +352,35 @@ Requirements:
   );
 };
 
+export const expandResearchTopic = async (
+  topic: string,
+  mode: ResearchMode,
+  type: ResearchType
+): Promise<string> => {
+  return makeApiCall(
+    async () => {
+      const response = await makeGroqApiCall(
+        `You are a research topic expert. Your task is to expand and refine the following research topic into a clear, well-defined research objective.
+
+Original Topic: "${topic}"
+
+Requirements:
+1. Consider the research mode (${mode}) and type (${type})
+2. Identify key concepts and variables
+3. Specify the scope and limitations
+4. Make it specific and measurable
+5. Ensure it's suitable for academic research
+
+Format your response as a single, refined research topic statement.`,
+        500,
+        `You are an expert at formulating research topics. Your goal is to transform broad topics into clear, focused research objectives.`
+      );
+      return response.choices[0].message.content.trim();
+    },
+    'Failed to expand research topic'
+  );
+};
+
 export const saveResearch = async (
   userId: string,
   data: any
