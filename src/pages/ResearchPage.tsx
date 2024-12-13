@@ -1,26 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
+  Box,
+  Button,
+  CircularProgress,
+  FormControl,
+  TextField,
+  Typography,
+  Alert,
+  Paper,
   Container,
   Grid,
-  Paper,
-  Typography,
-  Button,
-  Box,
-  CircularProgress,
-  Alert,
-  Tooltip,
-  IconButton,
-  FormControl,
   InputLabel,
   Select,
   MenuItem,
-  TextField,
+  Tooltip,
   SelectChangeEvent
 } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
-import SaveIcon from '@mui/icons-material/Save';
-import { 
+import {
   setMode, 
   setType, 
   setError,
@@ -51,36 +48,37 @@ export default function ResearchPage() {
   const [isGeneratingTarget, setIsGeneratingTarget] = useState(false);
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
   const [isGeneratingSections, setIsGeneratingSections] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [editedTitle, setEditedTitle] = useState('');
   const [progressState, setProgressState] = useState<ProgressState>({
     progress: 0,
-    message: '',
+    message: ''
   });
   const [showOutline, setShowOutline] = useState(false);
   const [outlineWordCount, setOutlineWordCount] = useState(0);
   const [parsedOutline, setParsedOutline] = useState<any[]>([]);
   const [generatedSections, setGeneratedSections] = useState<any[]>([]);
 
-  const handleModeChange = (e: SelectChangeEvent<string>) => {
-    dispatch(setMode(e.target.value as ResearchMode));
-  };
-
-  const handleTypeChange = (e: SelectChangeEvent<string>) => {
-    dispatch(setType(e.target.value as ResearchType));
-  };
-
   const handleGenerateTarget = async () => {
-    setIsGeneratingTarget(true);
-    dispatch(setError(null));
+    if (!query.trim()) {
+      dispatch(setError('Please enter a research topic'));
+      return;
+    }
 
     try {
-      const researchTarget = await generateTitle(query);
-      dispatch(setTitle(researchTarget));
+      setIsGeneratingTarget(true);
+      setProgressState({ progress: 0, message: 'Generating research target...' });
+
+      const generatedTitle = await generateTitle(query);
+      if (!generatedTitle) {
+        throw new Error('Failed to generate research target');
+      }
+
+      dispatch(setTitle(generatedTitle));
+      setProgressState({ progress: 100, message: 'Target generation complete!' });
+
     } catch (error) {
-      console.error('Error generating research target:', error);
-      dispatch(setError(error instanceof Error ? error.message : 'Failed to generate research target'));
+      console.error('Error generating target:', error);
+      setProgressState({ progress: 0, message: 'Error generating target' });
+      dispatch(setError('Failed to generate target. Please try again.'));
     } finally {
       setIsGeneratingTarget(false);
     }
@@ -244,7 +242,7 @@ Requirements:
   };
 
   const handleExportDocument = async (format: 'word' | 'pdf') => {
-    setIsLoading(true);
+    setIsGeneratingTarget(true);
     try {
       const documentOptions = {
         title: research.title,
@@ -276,26 +274,9 @@ Requirements:
         dispatch(setError(`Failed to generate ${format.toUpperCase()} document`));
       }
     } finally {
-      setIsLoading(false);
+      setIsGeneratingTarget(false);
     }
   };
-
-  const handleTitleEdit = () => {
-    setEditedTitle(research.title);
-    setEditingTitle(true);
-  };
-
-  const handleTitleSave = () => {
-    if (editedTitle.trim()) {
-      dispatch(setTitle(editedTitle.trim()))
-    }
-    setEditingTitle(false)
-  }
-
-  const handleTitleCancel = () => {
-    setEditingTitle(false)
-    setEditedTitle('')
-  }
 
   const countWords = (text: string): number => {
     return text.trim().split(/\s+/).filter(word => word.length > 0).length;
@@ -305,10 +286,6 @@ Requirements:
     return outlineItems.reduce((total, item) => {
       return total + countWords(item.title);
     }, 0);
-  };
-
-  const handleShowOutline = () => {
-    setShowOutline(true);
   };
 
   const renderProgress = () => {
@@ -342,6 +319,14 @@ Requirements:
         />
       </Box>
     );
+  };
+
+  const handleModeChange = (e: SelectChangeEvent<string>) => {
+    dispatch(setMode(e.target.value as ResearchMode));
+  };
+
+  const handleTypeChange = (e: SelectChangeEvent<string>) => {
+    dispatch(setType(e.target.value as ResearchType));
   };
 
   const renderSettings = () => (
@@ -385,7 +370,7 @@ Requirements:
           <Button
             variant="contained"
             onClick={() => handleExportDocument('word')}
-            disabled={!research.sections.length || isLoading}
+            disabled={!research.sections.length || isGeneratingTarget}
             startIcon={<></>}
           >
             Word
@@ -397,7 +382,7 @@ Requirements:
           <Button
             variant="contained"
             onClick={() => handleExportDocument('pdf')}
-            disabled={!research.sections.length || isLoading}
+            disabled={!research.sections.length || isGeneratingTarget}
             startIcon={<></>}
           >
             PDF
@@ -493,6 +478,48 @@ Requirements:
     );
   };
 
+  const renderTargetStep = () => {
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Typography variant="h6" gutterBottom>
+          Enter Research Topic
+        </Typography>
+        <TextField
+          fullWidth
+          variant="outlined"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Enter your research topic..."
+          disabled={isGeneratingTarget}
+          sx={{ mb: 2 }}
+        />
+        {research.title && (
+          <Box sx={{ mt: 2, mb: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>
+              Generated Target:
+            </Typography>
+            <TextField
+              fullWidth
+              variant="outlined"
+              value={research.title}
+              onChange={(e) => dispatch(setTitle(e.target.value))}
+              multiline
+              rows={2}
+            />
+          </Box>
+        )}
+        <Button
+          variant="contained"
+          onClick={handleGenerateTarget}
+          disabled={!query.trim() || isGeneratingTarget}
+          startIcon={isGeneratingTarget ? <CircularProgress size={20} /> : null}
+        >
+          {isGeneratingTarget ? 'Generating...' : 'Generate Target'}
+        </Button>
+      </Box>
+    );
+  };
+
   useEffect(() => {
     // Initialize real-time subscription for updates
     const cleanup = () => {
@@ -525,80 +552,7 @@ Requirements:
               </Alert>
             )}
 
-            <Box sx={{ mb: 3 }}>
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <TextField
-                  label="Research Topic"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Enter your research topic"
-                  fullWidth
-                  variant="outlined"
-                  disabled={isGeneratingTarget || isGeneratingOutline || isGeneratingSections}
-                />
-              </FormControl>
-              <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={handleGenerateTarget}
-                  disabled={!query || isGeneratingTarget || isGeneratingOutline || isGeneratingSections}
-                >
-                  {isGeneratingTarget ? 'Generating Target...' : 'Generate Target'}
-                </Button>
-              </Box>
-            </Box>
-
-            {research.title && (
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom>
-                  Research Target
-                </Typography>
-                {editingTitle ? (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <TextField
-                      fullWidth
-                      value={editedTitle}
-                      onChange={(e) => setEditedTitle(e.target.value)}
-                      label="Research Target"
-                      variant="outlined"
-                      size="small"
-                    />
-                    <Tooltip title="Save Target">
-                      <IconButton 
-                        onClick={handleTitleSave}
-                        color="primary"
-                        size="small"
-                      >
-                        <SaveIcon />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Cancel">
-                      <IconButton
-                        onClick={handleTitleCancel}
-                        color="error"
-                        size="small"
-                      >
-                        <CloseIcon />
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                ) : (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography sx={{ flex: 1 }}>{research.title}</Typography>
-                    <Tooltip title="Edit Research Target">
-                      <IconButton
-                        onClick={handleTitleEdit}
-                        size="small"
-                        sx={{ ml: 1 }}
-                      >
-                        <></>
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                )}
-              </Box>
-            )}
+            {renderTargetStep()}
 
             {research.title && (
               <Box sx={{ mb: 4 }}>
@@ -615,7 +569,7 @@ Requirements:
                     <Button
                       variant="contained"
                       color="secondary"
-                      onClick={handleShowOutline}
+                      onClick={() => setShowOutline(true)}
                       disabled={isGeneratingOutline || isGeneratingSections}
                       sx={{ 
                         animation: !showOutline ? 'pulse 1.5s infinite' : 'none',
