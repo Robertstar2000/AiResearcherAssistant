@@ -389,7 +389,7 @@ Topic: "${topic}"
 
 Requirements:
 1. Generate EXACTLY between ${min} and ${max} main sections
-2. Each section must be numbered (1., 2., etc.)
+2. Each section must be numbered (1., 2., etc.) or lettered (A., B., etc.)
 3. Include descriptive bullet points for each section
 4. Maintain logical flow between sections
 5. Ensure comprehensive topic coverage`;
@@ -399,12 +399,12 @@ Requirements:
 IMPORTANT SECTION COUNT REQUIREMENT:
 - You MUST generate exactly between ${min} and ${max} main sections
 - No more and no less than this range is acceptable
-- Each main section must be numbered (1., 2., etc.)
+- Each main section must be numbered (1., 2., etc.) or lettered (A., B., etc.)
 
 The outline must follow these requirements:
 
 1. Structure:
-   - Generate between ${min} and ${max} main sections (numbered 1., 2., etc.)
+   - Generate between ${min} and ${max} main sections (numbered 1., 2., etc. or lettered A., B., etc.)
    - Each main section must have descriptive bullet points
    - Maintain logical flow and progression of ideas
    - Ensure comprehensive coverage of the topic
@@ -416,7 +416,7 @@ The outline must follow these requirements:
    - Consider current research trends and developments
 
 3. Format Requirements:
-   - Use numbers for main sections (1., 2., etc.)
+   - Use numbers or letters for main sections (1., 2., etc. or A., B., etc.)
    - Use bullet points (•) for section descriptions
    - Each section MUST have multiple descriptive bullet points`;
 
@@ -432,11 +432,29 @@ The outline must follow these requirements:
     // Parse and count sections AFTER outline is generated
     const lines = outline.split('\n');
     let sectionCount = 0;
+    let lastSectionNumber = 0;
+    let lastSectionLetter = '';
     
     for (const line of lines) {
       const trimmedLine = line.trim();
-      if (/^\d+\./.test(trimmedLine)) {
-        sectionCount++;
+      // Match either numbered sections (1., 2.) or lettered sections (A., B., a., b.)
+      const numberMatch = trimmedLine.match(/^(\d+)\./);
+      const letterMatch = trimmedLine.match(/^([A-Za-z])\./);
+      
+      if (numberMatch) {
+        const currentNumber = parseInt(numberMatch[1]);
+        if (currentNumber > lastSectionNumber) {
+          sectionCount++;
+          lastSectionNumber = currentNumber;
+          lastSectionLetter = ''; // Reset letter counting when switching to numbers
+        }
+      } else if (letterMatch) {
+        const currentLetter = letterMatch[1].toLowerCase();
+        if (currentLetter > lastSectionLetter || lastSectionLetter === '') {
+          sectionCount++;
+          lastSectionLetter = currentLetter;
+          lastSectionNumber = 0; // Reset number counting when switching to letters
+        }
       }
     }
     
@@ -451,7 +469,7 @@ The outline must follow these requirements:
     if (!sectionCount) {
       throw new ResearchException(
         ResearchError.GENERATION_ERROR,
-        'Generated outline does not follow the required format. Each section must start with a number followed by a dot.'
+        'Generated outline does not follow the required format. Each section must start with a number or letter followed by a dot.'
       );
     }
 
