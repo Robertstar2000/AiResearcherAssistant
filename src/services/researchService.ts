@@ -1,225 +1,93 @@
-import { generateDetailedOutline, generateSection, generateReferences, OutlineItem } from './api';
+import { researchApi } from './api';
 import { ResearchError, ResearchException } from './researchErrors';
-import { ResearchMode, ResearchType } from '../store/slices/researchSlice';
+import { ResearchSection } from '../store/slices/researchSlice';
 
-interface ResearchSection {
-  title: string;
-  content: string;
-  number: string;
-  warning?: string;
+// Function to create research outline
+export async function createResearchOutline(topic: string, mode: string, type: string): Promise<ResearchSection[]> {
+  try {
+    // Generate detailed outline using researchApi
+    const outline = await researchApi.generateDetailedOutline(topic, mode, type);
+    
+    // Parse the outline into ResearchSection array
+    const parsedSections: ResearchSection[] = parseOutline(outline);
+    
+    return parsedSections;
+  } catch (error) {
+    if (error instanceof ResearchException) {
+      // Handle known research exceptions
+      throw error;
+    } else {
+      // Handle unexpected errors
+      throw new ResearchException(
+        ResearchError.GENERATION_ERROR,
+        'An unexpected error occurred while creating the research outline.'
+      );
+    }
+  }
 }
 
-interface ResearchResult {
-  sections: ResearchSection[];
-  outline: string;
-}
-
-export async function parseDetailedOutline(
-  outlineText: string
-): Promise<OutlineItem[]> {
-  const lines = outlineText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-  const items: OutlineItem[] = [];
-  let currentDescription: string[] = [];
-  let currentItem: OutlineItem | null = null;
-  let currentLevel = 0;
+// Utility function to parse outline
+function parseOutline(outline: string): ResearchSection[] {
+  const lines = outline.split('\n').filter(line => line.trim());
+  const sections: ResearchSection[] = [];
+  let currentSection: ResearchSection | null = null;
 
   for (const line of lines) {
-    // Check for section headers (numbered or lettered)
-    const sectionMatch = line.match(/^(\d+)\.\s+(.+)/);
-    const subsectionMatch = line.match(/^([a-z])\.\s+(.+)/i);
-
-    if (sectionMatch) {
-      // Save previous item if exists
-      if (currentItem) {
-        currentItem.description = currentDescription.join('\n');
-        items.push(currentItem);
-        currentDescription = [];
+    // Check if line starts with a number (section header)
+    const match = line.match(/^(\d+\.?(?:\d+)?)\s*(.*)/);
+    if (match) {
+      if (currentSection) {
+        sections.push(currentSection);
       }
-
-      // Create new main section
-      currentItem = {
-        number: sectionMatch[1],
-        title: sectionMatch[2],
-        description: '',
-        isSubsection: false,
-        level: 1
+      currentSection = {
+        number: match[1],
+        title: match[2].trim(),
+        content: '',
+        subsections: []
       };
-      currentLevel = 1;
-    } else if (subsectionMatch) {
-      // Save previous item if exists
-      if (currentItem) {
-        currentItem.description = currentDescription.join('\n');
-        items.push(currentItem);
-        currentDescription = [];
-      }
-
-      // Create new subsection
-      currentItem = {
-        number: subsectionMatch[1],
-        title: subsectionMatch[2],
-        description: '',
-        isSubsection: true,
-        level: currentLevel + 1
-      };
-    } else if (line.startsWith('•') || line.startsWith('-')) {
-      // Add bullet points to description
-      if (currentItem) {
-        currentDescription.push(line);
-      }
-    } else {
-      // Add other lines to description
-      if (currentItem) {
-        currentDescription.push(line);
-      }
+    } else if (currentSection) {
+      // Add non-header lines as content
+      currentSection.content += (currentSection.content ? '\n' : '') + line.trim();
     }
   }
 
-  // Add final item
-  if (currentItem) {
-    currentItem.description = currentDescription.join('\n');
-    items.push(currentItem);
+  if (currentSection) {
+    sections.push(currentSection);
   }
 
-  // Ensure every section has at least a minimal description
-  const processedItems = items.map(item => ({
-    ...item,
-    description: item.description || '[Description to be added]'
-  }));
-
-  return processedItems;
+  return sections;
 }
 
-export async function generateResearch(
+// Example of another function utilizing researchApi
+export async function generateResearchSection(
+  sectionTitle: string,
+  sectionDescription: string,
   topic: string,
-  mode: ResearchMode = ResearchMode.Basic,
-  type: ResearchType = ResearchType.General,
-  progressCallback: (progress: number, message: string) => void
-): Promise<ResearchResult> {
+  mode: string,
+  type: string
+): Promise<string> {
   try {
-    let sections: ResearchSection[] = [];
-    let outline: string = '';
-    let consecutiveErrors = 0;
-    let rateLimitHits = 0;
-    const maxRateLimitRetries = 3;
-    const baseDelay = 20000; // 20 seconds base delay
-
-    progressCallback(0, 'Generating outline...');
-    outline = await generateDetailedOutline(topic, mode, type);
-    if (!outline) {
-      throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate outline');
-    }
-
-    // Parse outline into sections
-    progressCallback(20, 'Analyzing and structuring research outline...');
-    const outlineItems = await parseDetailedOutline(outline);
-    if (!outlineItems.length) {
-      throw new ResearchException(ResearchError.PARSING_ERROR, 'Failed to parse outline');
-    }
-
-    // Generate content for each section
-    let currentProgress = 20;
-    const progressPerSection = 60 / outlineItems.length;
-    const maxConsecutiveErrors = 3;
-
-    for (let i = 0; i < outlineItems.length; i++) {
-      const item = outlineItems[i];
-      
-      try {
-        progressCallback(
-          currentProgress,
-          `[${i + 1}/${outlineItems.length}] Generating section: "${item.title}"`
-        );
-
-        // Add base delay between sections to avoid rate limits
-        if (i > 0) {
-          const currentDelay = baseDelay * Math.pow(1.5, rateLimitHits);
-          progressCallback(
-            currentProgress,
-            `[${i + 1}/${outlineItems.length}] Processing ${currentDelay/1000}s before generating "${item.title}"...`
-          );
-          await new Promise(resolve => setTimeout(resolve, currentDelay));
-        }
-
-        const content = await generateSection(
-          topic,
-          item.title,
-          item.description || '',
-          mode,
-          type
-        );
-        
-        const wordCount = content.split(/\s+/).length;
-        const minWords = 3000;
-        
-        let warning: string | undefined;
-        if (wordCount < minWords) {
-          warning = `Content length (${wordCount} words) is below the minimum requirement of ${minWords} words.`;
-        }
-
-        sections.push({
-          title: item.title,
-          content,
-          number: item.number,
-          warning
-        });
-
-        consecutiveErrors = 0;
-        rateLimitHits = 0;
-        currentProgress += progressPerSection;
-      } catch (error) {
-        console.error(`Error generating section ${item.title}:`, error);
-        
-        if (error instanceof ResearchException && error.code === ResearchError.RATE_LIMIT_ERROR) {
-          rateLimitHits++;
-          if (rateLimitHits <= maxRateLimitRetries) {
-            const retryDelay = baseDelay * Math.pow(1.5, rateLimitHits);
-            progressCallback(
-              currentProgress,
-              `[${i + 1}/${outlineItems.length}] Rate limit hit ${rateLimitHits}/${maxRateLimitRetries}, waiting ${retryDelay/1000} seconds before retry...`
-            );
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-            i--; // Retry this section
-            continue;
-          }
-        }
-
-        consecutiveErrors++;
-        if (consecutiveErrors >= maxConsecutiveErrors) {
-          throw new ResearchException(
-            ResearchError.GENERATION_ERROR,
-            `Multiple consecutive section generation failures after ${maxConsecutiveErrors} attempts. Last error: ${error instanceof Error ? error.message : String(error)}`,
-            { originalError: error, section: item.title }
-          );
-        }
-        
-        // Add a failed section placeholder
-        const failedSection = {
-          title: item.title,
-          content: `Failed to generate content: ${error instanceof Error ? error.message : String(error)}`,
-          number: item.number,
-          warning: 'Section generation failed'
-        };
-        
-        sections.push(failedSection);
-      }
-    }
-
-    // Generate references
-    progressCallback(80, 'Generating references...');
-    try {
-      const referencesContent = await generateReferences(topic);
-      const references = referencesContent.split('\n').filter(ref => ref.trim().length > 0);
-      if (!references || !references.length) {
-        console.warn('No references generated');
-      }
-    } catch (error) {
-      console.error('Error generating references:', error);
-    }
-
-    progressCallback(100, 'Research generation complete!');
-    return { sections, outline };
+    const content = await researchApi.generateSectionBatch(
+      [{ sectionTitle, sectionDescription }],
+      topic,
+      mode,
+      type
+    );
+    return content[0] || '';
   } catch (error) {
-    console.error('Error in generateResearch:', error);
-    throw error;
+    if (error instanceof ResearchException) {
+      // Handle known research exceptions
+      throw error;
+    } else {
+      // Handle unexpected errors
+      throw new ResearchException(
+        ResearchError.GENERATION_ERROR,
+        'An unexpected error occurred while generating the research section.'
+      );
+    }
   }
 }
+
+// Remove or comment out unused variables if any
+// Example:
+// const unusedVariable = 'This is unused';

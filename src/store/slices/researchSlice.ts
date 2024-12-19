@@ -9,7 +9,8 @@ export enum ResearchMode {
 export enum ResearchType {
   General = 'general',
   Literature = 'literature',
-  Experiment = 'experiment'
+  Experiment = 'experiment',
+  Article = 'article'
 }
 
 export enum CitationStyle {
@@ -44,6 +45,7 @@ export interface ResearchState {
   loading: boolean
   error: string | null
   history: ResearchHistory[]
+  researchTarget: string | null
 }
 
 const initialState: ResearchState = {
@@ -55,7 +57,8 @@ const initialState: ResearchState = {
   references: [],
   loading: false,
   error: null,
-  history: []
+  history: [],
+  researchTarget: null
 }
 
 const researchSlice = createSlice({
@@ -64,6 +67,9 @@ const researchSlice = createSlice({
   reducers: {
     setTitle: (state, action: PayloadAction<string>) => {
       state.title = action.payload
+    },
+     setResearchTarget: (state, action: PayloadAction<string>) => {
+      state.researchTarget = action.payload
     },
     setMode: (state, action: PayloadAction<ResearchMode>) => {
       state.mode = action.payload
@@ -101,7 +107,8 @@ export const {
   setReferences,
   setLoading,
   setError,
-  addToHistory
+  addToHistory,
+  setResearchTarget
 } = researchSlice.actions
 
 export default researchSlice.reducer

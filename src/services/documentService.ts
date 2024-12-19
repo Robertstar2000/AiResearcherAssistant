@@ -1,6 +1,6 @@
-import { Document, Paragraph, Packer, HeadingLevel, AlignmentType } from 'docx';
+import { Document, Paragraph, Packer, HeadingLevel, AlignmentType, TableOfContents, PageBreak } from 'docx';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { ResearchSection, SubSection } from '../types';
+import { ResearchSection } from '../types';
 
 export interface DocumentMetadata {
   title: string;
@@ -29,18 +29,19 @@ export const ResearchError = {
 
 const convertToMarkdown = (sections: ResearchSection[]): string => {
   let markdown = '';
-  sections.forEach((section, sectionIndex) => {
+  
+  sections.forEach((section) => {
     if (section.title) {
-      markdown += `${sectionIndex + 1}. ${section.title}\n\n`;
+      markdown += `${section.number}. ${section.title}\n\n`;
     }
     if (section.content) {
       markdown += `${section.content}\n\n`;
     }
+    
     if (section.subsections && section.subsections.length > 0) {
-      section.subsections.forEach((subsection: SubSection, subIndex: number) => {
-        const letter = String.fromCharCode(97 + subIndex);
+      section.subsections.forEach((subsection) => {
         if (subsection.title) {
-          markdown += `${letter}. ${subsection.title}\n\n`;
+          markdown += `${section.number}.${subsection.number} ${subsection.title}\n\n`;
         }
         if (subsection.content) {
           markdown += `${subsection.content}\n\n`;
@@ -48,28 +49,33 @@ const convertToMarkdown = (sections: ResearchSection[]): string => {
       });
     }
   });
+
   return markdown;
 };
 
 const parseMarkdownToDocx = (markdown: string): Paragraph[] => {
+  const lines = markdown.split('\n').filter(line => line.trim());
   const paragraphs: Paragraph[] = [];
-  const lines = markdown.split('\n');
+  let currentHeadingLevel = 0;
+
   lines.forEach(line => {
     const mainSectionMatch = line.match(/^(\d+)\.\s+(.+)/);
-    const subSectionMatch = line.match(/^([a-z])\.\s+(.+)/);
+    const subSectionMatch = line.match(/^(\d+\.\d+)\s+(.+)/);
     
     if (mainSectionMatch) {
+      currentHeadingLevel = 1;
       paragraphs.push(
         new Paragraph({
-          text: line,
+          text: mainSectionMatch[2],
           heading: HeadingLevel.HEADING_1,
           spacing: { before: 400, after: 200 }
         })
       );
     } else if (subSectionMatch) {
+      currentHeadingLevel = 2;
       paragraphs.push(
         new Paragraph({
-          text: line,
+          text: subSectionMatch[2],
           heading: HeadingLevel.HEADING_2,
           spacing: { before: 200, after: 200 }
         })
@@ -78,76 +84,51 @@ const parseMarkdownToDocx = (markdown: string): Paragraph[] => {
       paragraphs.push(
         new Paragraph({
           text: line,
-          spacing: { after: 200 }
+          spacing: { after: 200 },
+          indent: currentHeadingLevel === 2 ? { left: 720 } : undefined // 0.5 inch indent for subsection content
         })
       );
     }
   });
+
   return paragraphs;
 };
 
 export const generateWordDocument = async (options: DocumentOptions): Promise<Blob> => {
   try {
     const markdown = convertToMarkdown(options.sections);
+    const titlePage = [
+      new Paragraph({
+        text: options.title,
+        heading: HeadingLevel.TITLE,
+        spacing: { after: 400 },
+        alignment: AlignmentType.CENTER
+      }),
+      new Paragraph({
+        text: `By ${options.author}`,
+        spacing: { after: 800 },
+        alignment: AlignmentType.CENTER
+      }),
+    ];
+    const contentParagraphs = parseMarkdownToDocx(markdown);
+
     const doc = new Document({
       sections: [{
         properties: {},
         children: [
-          // Title Page
-          new Paragraph({
-            text: options.title,
-            heading: HeadingLevel.TITLE,
-            spacing: { after: 400 },
-            alignment: AlignmentType.CENTER
-          }),
-          new Paragraph({
-            text: `By ${options.author}`,
-            spacing: { after: 200 },
-            alignment: AlignmentType.CENTER
-          }),
-          new Paragraph({
-            text: new Date().toLocaleDateString(),
-            spacing: { after: 800 },
-            alignment: AlignmentType.CENTER
-          }),
-          // Table of Contents
-          new Paragraph({
-            text: 'Table of Contents',
-            heading: HeadingLevel.HEADING_1,
-            spacing: { before: 400, after: 200 }
-          }),
-          ...options.sections.map((section, index) => 
-            new Paragraph({
-              text: `${index + 1}. ${section.title}`,
-              spacing: { after: 100 },
-              tabStops: [{ type: 'right', position: 5500 }],
-              style: 'tableOfContents'
-            })
-          ),
-          new Paragraph({
-            text: '',
-            spacing: { after: 400 }
-          }),
-          // Content
-          ...parseMarkdownToDocx(markdown),
-          new Paragraph({
-            text: 'References',
-            heading: HeadingLevel.HEADING_1,
-            spacing: { before: 400, after: 200 }
-          }),
-          ...options.references.map(ref => new Paragraph({
-            text: ref,
-            spacing: { after: 200 }
-          }))
-        ],
-      }],
+          ...titlePage,
+          new PageBreak(),
+          new TableOfContents("Table of Contents"),
+          new PageBreak(),
+          ...contentParagraphs
+        ] as Paragraph[]
+      }]
     });
 
-    const buffer = await Packer.toBlob(doc);
-    return buffer;
+    return await Packer.toBlob(doc);
   } catch (error) {
     console.error('Error generating Word document:', error);
-    throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate Word document');
+    throw error;
   }
 };
 
@@ -157,199 +138,197 @@ export const generatePdfDocument = async (
   references: string[]
 ): Promise<Blob> => {
   try {
-    const markdown = convertToMarkdown(sections);
-    const pdf = await PDFDocument.create();
-    
-    // Embed a standard font
-    const font = await pdf.embedFont(StandardFonts.TimesRoman);
-    const boldFont = await pdf.embedFont(StandardFonts.TimesRomanBold);
-    
-    // Title Page
-    let currentPage = pdf.addPage();
-    const { width, height } = currentPage.getSize();
-    const fontSize = 12;
-    const titleSize = 24;
-    const headerSize = 16;
-    let currentY = height - 100; // Adjusted Y position for better title placement
+    const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
 
-    // Draw title centered with proper width calculation
-    const title = metadata.title;
-    const titleWidth = boldFont.widthOfTextAtSize(title, titleSize);
-    const titleX = Math.max(50, (width - titleWidth) / 2); // Ensure minimum margin of 50
-    currentPage.drawText(title, {
-      x: titleX,
-      y: currentY,
+    // Title Page
+    let page = pdfDoc.addPage();
+    const { width } = page.getSize();
+    const titleSize = 24;
+    const normalSize = 12;
+    
+    // Center title
+    const titleWidth = boldFont.widthOfTextAtSize(metadata.title, titleSize);
+    page.drawText(metadata.title, {
+      x: (width - titleWidth) / 2,
+      y: 600,
       font: boldFont,
       size: titleSize
     });
-    currentY -= 60;
 
-    // Draw author centered
+    // Add author
     const authorText = `By ${metadata.author}`;
-    const authorWidth = font.widthOfTextAtSize(authorText, fontSize + 2);
-    currentPage.drawText(authorText, {
+    const authorWidth = font.widthOfTextAtSize(authorText, normalSize);
+    page.drawText(authorText, {
       x: (width - authorWidth) / 2,
-      y: currentY,
+      y: 550,
       font: font,
-      size: fontSize + 2
-    });
-    currentY -= 40;
-
-    // Draw date centered
-    const dateText = metadata.created.toLocaleDateString();
-    const dateWidth = font.widthOfTextAtSize(dateText, fontSize);
-    currentPage.drawText(dateText, {
-      x: (width - dateWidth) / 2,
-      y: currentY,
-      font: font,
-      size: fontSize
+      size: normalSize
     });
 
-    // Table of Contents Page
-    currentPage = pdf.addPage();
-    currentY = height - 100;
-
-    // Draw Table of Contents header
-    const tocTitle = 'Table of Contents';
-    const tocTitleWidth = boldFont.widthOfTextAtSize(tocTitle, headerSize);
-    currentPage.drawText(tocTitle, {
-      x: Math.max(50, (width - tocTitleWidth) / 2),
-      y: currentY,
+    // Table of Contents
+    page = pdfDoc.addPage();
+    let yPosition = 600;
+    
+    page.drawText('Table of Contents', {
+      x: 50,
+      y: yPosition,
       font: boldFont,
-      size: headerSize
+      size: 16
     });
-    currentY -= 50;
 
-    // Draw table of contents entries with page numbers
-    let pageCounter = 3; // Start from page 3 (after title and TOC)
-    for (let i = 0; i < sections.length; i++) {
-      const section = sections[i];
-      const entry = `${i + 1}. ${section.title}`;
-      const pageNum = `${pageCounter}`;
-      const entryWidth = font.widthOfTextAtSize(entry, fontSize);
-      const pageNumWidth = font.widthOfTextAtSize(pageNum, fontSize);
-      const dotWidth = font.widthOfTextAtSize('.', fontSize);
-      const availableWidth = width - 140 - pageNumWidth; // 70 margin on each side
-      
-      // Calculate dots
-      const dotsCount = Math.floor((availableWidth - entryWidth) / dotWidth);
-      const dots = '.'.repeat(Math.max(0, dotsCount));
+    yPosition -= 40;
+    let pageNumber = 3; // Start content on page 3
 
-      if (currentY < 50) {
-        currentPage = pdf.addPage();
-        currentY = height - 100;
+    // Add TOC entries
+    for (const section of sections) {
+      if (yPosition < 50) {
+        page = pdfDoc.addPage();
+        yPosition = 600;
       }
 
-      // Draw entry
-      currentPage.drawText(entry, {
-        x: 70,
-        y: currentY,
-        font: font,
-        size: fontSize
-      });
-
-      // Draw dots
-      currentPage.drawText(dots, {
-        x: 70 + entryWidth,
-        y: currentY,
-        font: font,
-        size: fontSize
-      });
-
-      // Draw page number
-      currentPage.drawText(pageNum, {
-        x: width - 70 - pageNumWidth,
-        y: currentY,
-        font: font,
-        size: fontSize
-      });
-
-      currentY -= 30;
-      pageCounter++; // Increment page counter for next section
-    }
-
-    // Content pages
-    currentPage = pdf.addPage();
-    currentY = height - 100;
-
-    // Draw content
-    const lines = markdown.split('\n');
-    for (const line of lines) {
-      if (line.trim()) {
-        const isMainSection = line.match(/^\d+\.\s+/);
-        const isSubSection = line.match(/^[a-z]\.\s+/);
-        const lineFont = isMainSection ? boldFont : font;
-        const lineSize = isMainSection ? headerSize : (isSubSection ? fontSize + 2 : fontSize);
-        const xOffset = isSubSection ? 70 : 50;
-        const lineHeight = lineFont.heightAtSize(lineSize);
-        const wrappedText = wrapText(line, lineFont, lineSize, width - (xOffset + 100));
-
-        // Check if we need a new page
-        if (currentY - (lineHeight * wrappedText.length) < 50) {
-          currentPage = pdf.addPage();
-          currentY = height - 100;
-        }
-
-        // Draw each line of wrapped text
-        for (const textLine of wrappedText) {
-          currentPage.drawText(textLine, {
-            x: xOffset,
-            y: currentY,
-            font: lineFont,
-            size: lineSize
-          });
-          currentY -= lineHeight * 1.2; // Add 20% extra spacing between lines
-        }
-        
-        // Add extra spacing after sections
-        if (isMainSection) {
-          currentY -= lineHeight;
-        }
-      }
-    }
-
-    // Draw references
-    if (references.length > 0) {
-      if (currentY < 200) {
-        currentPage = pdf.addPage();
-        currentY = height - 100;
-      }
-
-      const refsTitle = 'References';
-      currentPage.drawText(refsTitle, {
+      const tocEntry = `${section.number}. ${section.title}`;
+      page.drawText(tocEntry, {
         x: 50,
-        y: currentY,
-        font: boldFont,
-        size: headerSize
+        y: yPosition,
+        font: font,
+        size: normalSize
       });
-      currentY -= 50;
+      
+      page.drawText(pageNumber.toString(), {
+        x: width - 50,
+        y: yPosition,
+        font: font,
+        size: normalSize
+      });
 
-      for (const ref of references) {
-        const refHeight = font.heightAtSize(fontSize);
-        const wrappedRef = wrapText(ref, font, fontSize, width - 160);
+      yPosition -= 20;
+      pageNumber += 2; // Estimate 2 pages per section
+    }
 
-        if (currentY - (refHeight * wrappedRef.length) < 50) {
-          currentPage = pdf.addPage();
-          currentY = height - 100;
+    // Content Pages
+    for (const section of sections) {
+      page = pdfDoc.addPage();
+      yPosition = 600;
+
+      // Section title
+      page.drawText(`${section.number}. ${section.title}`, {
+        x: 50,
+        y: yPosition,
+        font: boldFont,
+        size: 16
+      });
+
+      yPosition -= 30;
+
+      // Section content
+      const contentLines = wrapText(section.content, font, normalSize, width - 100);
+      for (const line of contentLines) {
+        if (yPosition < 50) {
+          page = pdfDoc.addPage();
+          yPosition = 600;
         }
 
-        for (const refLine of wrappedRef) {
-          currentPage.drawText(refLine, {
+        page.drawText(line, {
+          x: 50,
+          y: yPosition,
+          font: font,
+          size: normalSize
+        });
+
+        yPosition -= 20;
+      }
+
+      // Subsections
+      if (section.subsections) {
+        for (const subsection of section.subsections) {
+          if (yPosition < 50) {
+            page = pdfDoc.addPage();
+            yPosition = 600;
+          }
+
+          page.drawText(`${section.number}.${subsection.number} ${subsection.title}`, {
             x: 70,
-            y: currentY,
-            font: font,
-            size: fontSize
+            y: yPosition,
+            font: boldFont,
+            size: 14
           });
-          currentY -= refHeight * 1.2;
+
+          yPosition -= 30;
+
+          const subContentLines = wrapText(subsection.content, font, normalSize, width - 120);
+          for (const line of subContentLines) {
+            if (yPosition < 50) {
+              page = pdfDoc.addPage();
+              yPosition = 600;
+            }
+
+            page.drawText(line, {
+              x: 70,
+              y: yPosition,
+              font: font,
+              size: normalSize
+            });
+
+            yPosition -= 20;
+          }
         }
       }
     }
 
-    const pdfBytes = await pdf.save();
-    return new Blob([pdfBytes], { type: 'application/pdf' });
+    // References
+    page = pdfDoc.addPage();
+    yPosition = 600;
+
+    page.drawText('References', {
+      x: 50,
+      y: yPosition,
+      font: boldFont,
+      size: 16
+    });
+
+    yPosition -= 40;
+
+    for (const ref of references) {
+      if (yPosition < 50) {
+        page = pdfDoc.addPage();
+        yPosition = 600;
+      }
+
+      const refLines = wrapText(ref, font, normalSize, width - 100);
+      for (const line of refLines) {
+        page.drawText(line, {
+          x: 50,
+          y: yPosition,
+          font: font,
+          size: normalSize
+        });
+
+        yPosition -= 20;
+      }
+    }
+
+    // Add page numbers
+    const pageCount = pdfDoc.getPageCount();
+    for (let i = 0; i < pageCount; i++) {
+      const page = pdfDoc.getPage(i);
+      const { width } = page.getSize();
+      
+      if (i > 0) { // Skip page number on title page
+        page.drawText(`${i + 1}`, {
+          x: width / 2,
+          y: 30,
+          font: font,
+          size: normalSize
+        });
+      }
+    }
+
+    return new Blob([await pdfDoc.save()], { type: 'application/pdf' });
   } catch (error) {
     console.error('Error generating PDF document:', error);
-    throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate PDF document');
+    throw error;
   }
 };
 

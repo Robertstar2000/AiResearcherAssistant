@@ -1,4 +1,4 @@
-import { supabase } from './api';
+import { researchApi } from './api';
 import { store } from '../store';
 import { setUser, logout } from '../store/slices/authSlice';
 import { Session, AuthChangeEvent, User as SupabaseUser } from '@supabase/supabase-js';
@@ -36,7 +36,7 @@ const createAuthUser = (user: SupabaseUser, metadata: UserMetadata): AuthUser =>
 export const initializeAuth = async (callback?: () => void): Promise<() => void> => {
   try {
     // Get session from storage
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    const { data: { session }, error: sessionError } = await researchApi.supabase.auth.getSession();
     console.log('Session check result:', session ? 'Session found' : 'No session found');
     
     if (sessionError) {
@@ -56,7 +56,7 @@ export const initializeAuth = async (callback?: () => void): Promise<() => void>
     }
 
     // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = researchApi.supabase.auth.onAuthStateChange(
       async (event: AuthChangeEvent, session: Session | null) => {
         try {
           console.log('Auth state changed:', event, session ? 'Session exists' : 'No session');
@@ -102,7 +102,22 @@ export const initializeAuth = async (callback?: () => void): Promise<() => void>
 
 export async function createUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
-    const { data, error } = await supabase.auth.signUp({
+    // Check if user already exists in custom table
+    const { data: existingUser } = await researchApi.supabase
+      .from('AiResearcherAssistant')
+      .select('*')
+      .eq('User-Name', credentials.email)
+      .single();
+
+    if (existingUser) {
+      throw new ResearchException(
+        ResearchError.AUTH_ERROR,
+        'User with this email already exists'
+      );
+    }
+
+    // Create user in Supabase Auth
+    const { data: authData, error: authError } = await researchApi.supabase.auth.signUp({
       email: credentials.email,
       password: credentials.password,
       options: {
@@ -110,49 +125,58 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
       }
     });
 
-    if (error) {
+    if (authError || !authData.user) {
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
-        `Failed to create user: ${error.message}`,
-        { error }
+        `Failed to create auth user: ${authError?.message || 'No user data returned'}`,
+        { error: authError }
       );
     }
 
-    if (!data.user) {
-      throw new ResearchException(
-        ResearchError.AUTH_ERROR,
-        'User creation successful but no user data returned'
-      );
-    }
+    // Get the current max ID to generate a new one
+    const { data: maxIdResult } = await researchApi.supabase
+      .from('AiResearcherAssistant')
+      .select('id')
+      .order('id', { ascending: false })
+      .limit(1)
+      .single();
 
-    // Insert user data into custom table using Supabase auth ID
-    const { error: profileError } = await supabase
+    const newId = maxIdResult ? maxIdResult.id + 1 : 1;
+
+    // Insert user data into custom table
+    const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .insert({
-        id: parseInt(data.user.id.replace(/-/g, '')),  // Convert UUID to number
-        "User-Name": credentials.metadata?.name || '',
+        id: newId,
+        "User-Name": credentials.email,
         "PassWord": credentials.password,
         "Occupation": credentials.metadata?.occupation || '',
         "Location": credentials.metadata?.geolocation || '',
+        auth_id: authData.user.id,  // Store Supabase Auth ID for reference
         created_at: new Date().toISOString()
-      });
+      })
+      .select()
+      .single();
 
-    if (profileError) {
-      console.error('Full profile error object:', JSON.stringify(profileError, null, 2));
-      
-      const errorMessage = typeof profileError === 'object' && profileError !== null
-        ? profileError.message || profileError.details || 'Unknown database error'
-        : 'Failed to create profile';
-
+    if (profileError || !profile) {
+      console.error('Profile creation error:', profileError);
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
-        `Failed to create user profile: ${errorMessage}`,
+        'Failed to create user profile',
         { error: profileError }
       );
     }
 
-    return createAuthUser(data.user, credentials.metadata || {});
+    // Return the created user
+    return {
+      id: profile.id.toString(),
+      email: profile["User-Name"],
+      name: credentials.metadata?.name || profile["User-Name"],
+      occupation: profile["Occupation"] || '',
+      geolocation: profile["Location"] || ''
+    };
   } catch (err) {
+    console.error('User creation error:', err);
     if (err instanceof ResearchException) {
       throw err;
     }
@@ -166,24 +190,37 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
 
 export async function authenticateUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
-    // Check credentials against our custom table
-    const { data: profile, error: profileError } = await supabase
-      .from('AiResearcherAssistant')
-      .select('*')
-      .eq('User-Name', credentials.email)
-      .eq('PassWord', credentials.password)
-      .single();
+    // First authenticate with Supabase Auth
+    const { data: authData, error: authError } = await researchApi.supabase.auth.signInWithPassword({
+      email: credentials.email,
+      password: credentials.password,
+    });
 
-    if (profileError || !profile) {
-      console.error('Authentication error:', profileError);
+    if (authError || !authData.user) {
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
         'Invalid email or password',
+        { error: authError }
+      );
+    }
+
+    // Get user profile from custom table
+    const { data: profile, error: profileError } = await researchApi.supabase
+      .from('AiResearcherAssistant')
+      .select('*')
+      .eq('User-Name', credentials.email)
+      .single();
+
+    if (profileError || !profile) {
+      console.error('Profile fetch error:', profileError);
+      throw new ResearchException(
+        ResearchError.AUTH_ERROR,
+        'User profile not found',
         { error: profileError }
       );
     }
 
-    // Create auth user from profile data
+    // Return user data
     return {
       id: profile.id.toString(),
       email: profile["User-Name"],
@@ -192,6 +229,7 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
       geolocation: profile["Location"] || ''
     };
   } catch (err) {
+    console.error('Login error:', err);
     if (err instanceof ResearchException) {
       throw err;
     }
@@ -206,7 +244,7 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
 // Handle sign out
 export const signOut = async (): Promise<void> => {
   try {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await researchApi.supabase.auth.signOut();
     if (error) throw error;
     store.dispatch(logout());
   } catch (error) {
