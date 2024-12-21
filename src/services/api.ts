@@ -2,6 +2,56 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Groq from 'groq-sdk';
 import { z } from 'zod'; // Added for enhanced type validation
 
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+const TOKEN_RATE_LIMIT = 250000; // tokens per minute
+const MAX_TOKENS_PER_REQUEST = 8000;
+const SAFETY_FACTOR = 1.5; // Account for both input and output tokens
+
+const calculateDelay = (tokensUsed: number) => {
+  // Calculate how many minutes we need to wait based on token rate limit
+  const minutesNeeded = (tokensUsed * SAFETY_FACTOR) / TOKEN_RATE_LIMIT;
+  return Math.ceil(minutesNeeded * 60 * 1000); // Convert to milliseconds
+};
+
+const callWithRetry = async <T>(
+  fn: () => Promise<T>,
+  retries: number = 6,
+  initialDelayMs: number = calculateDelay(MAX_TOKENS_PER_REQUEST)
+): Promise<T> => {
+  let lastError;
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      console.error(`Attempt ${i + 1} failed:`, error);
+      lastError = error;
+
+      // Check if it's a rate limit error and extract wait time
+      if (error?.message?.includes('Rate limit reached')) {
+        const waitTimeMatch = error.message.match(/try again in (\d+)m(\d+(\.\d+)?)s/);
+        if (waitTimeMatch) {
+          const minutes = parseInt(waitTimeMatch[1]);
+          const seconds = parseFloat(waitTimeMatch[2]);
+          const waitTimeMs = (minutes * 60 + seconds) * 1000;
+          // Add a small buffer to ensure we're past the rate limit
+          await delay(waitTimeMs + 5000);
+          continue;
+        }
+      }
+
+      // If not a rate limit error or couldn't parse wait time, use exponential backoff
+      if (i < retries - 1) {
+        const backoffDelay = initialDelayMs * Math.pow(2, i);
+        // Cap at 6 minutes
+        const delayMs = Math.min(backoffDelay, 360000);
+        await delay(delayMs);
+      }
+    }
+  }
+  throw lastError;
+};
+
 // Enhanced Error Handling
 export enum ResearchErrorType {
   GENERATION_ERROR = 'GENERATION_ERROR',
@@ -35,8 +85,8 @@ export class ResearchError extends Error {
 
 // Validation Schemas
 const ResearchConfigSchema = z.object({
-  mode: z.enum(['basic', 'advanced', 'article']),
-  type: z.enum(['general', 'literature', 'experiment', 'article']),
+  mode: z.enum(['basic', 'advanced', 'expert']),
+  type: z.enum(['general', 'literature', 'experiment']),
   topic: z.string().min(3)
 });
 
@@ -110,6 +160,15 @@ export async function safeApiCall<T>(
 }
 
 // Type-Safe API Services
+import { ResearchSection, ResearchMode, ResearchType } from '../types/research';
+
+interface ValidatedConfig {
+  mode: ResearchMode;
+  type: ResearchType;
+  topic: string;
+  researchTarget: string;
+}
+
 export class ResearchApiService {
   public readonly supabase: SupabaseClient;
   public readonly groq: Groq;
@@ -123,36 +182,40 @@ export class ResearchApiService {
 
   // Unified Title Generation
   async generateTitle(
-    topic: string, 
-    mode: string, 
+    prompt: string,
+    mode: string,
     type: string
   ): Promise<string> {
-    return safeApiCall(async () => {
+    return callWithRetry(async () => {
       // Validate input
       const validatedConfig = ResearchConfigSchema.parse({ 
-        topic, mode, type 
+        topic: prompt, mode, type 
       });
 
-      const response = await this.groq.chat.completions.create({
-        messages: [{
-          role: "user",
-          content: `Generate an academic title for a ${validatedConfig.mode} ${validatedConfig.type} research on: ${validatedConfig.topic}`
-        }],
+      const completion = await this.groq.chat.completions.create({
         model: "llama-3.2-90b-vision-preview",
-        max_tokens: 8000,
-        temperature: 0.7
+        messages: [
+          {
+            role: "system",
+            content: "You are an academic expert who specializes in creating research titles."
+          },
+          {
+            role: "user",
+            content: `Generate one and only one sentence as an academic title using ${validatedConfig.mode} ${validatedConfig.type} research on: ${validatedConfig.topic} to describe what the research is about. Do not include an introduction, conclusion, or literature search. The title should be clear, concise, and focused on the topic ${validatedConfig.topic} to describe what the research is about`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 150,
+        top_p: 1,
+        frequency_penalty: 0,
+        presence_penalty: 0
       });
 
-      const title = response.choices[0]?.message?.content?.trim();
-      
-      if (!title) {
-        throw new ResearchError(
-          ResearchErrorType.GENERATION_ERROR, 
-          'Failed to generate title'
-        );
+      if (!completion.choices[0]?.message?.content) {
+        throw new Error('No response from OpenAI');
       }
 
-      return title;
+      return completion.choices[0].message.content.trim();
     });
   }
 
@@ -160,77 +223,199 @@ export class ResearchApiService {
   async generateDetailedOutline(
     topic: string, 
     mode: string, 
-    type: string
+    type: string,
+    sectionCount: number
   ): Promise<string> {
-    return safeApiCall(async () => {
-      const validatedConfig = ResearchConfigSchema.parse({ 
-        topic, mode, type 
+    return callWithRetry(async () => {
+      const { mode: validMode, type: validType, topic: validTopic } = ResearchConfigSchema.parse({
+        mode: mode.toLowerCase(),
+        type: type.toLowerCase(),
+        topic
       });
 
-      const response = await this.groq.chat.completions.create({
-        messages: [{
-          role: "user",
-          content: `Generate a structured research outline for a ${validatedConfig.mode} ${validatedConfig.type} on: ${validatedConfig.topic}`
-        }],
-        model: "llama-3.2-90b-vision-preview",
+      const prompt = `Generate a detailed research outline for a ${validType} research on "${validTopic}". 
+        The outline should have exactly ${sectionCount} main sections, appropriate for a ${validMode} level research paper.
+        Each section should have a descriptive title that clearly indicates its content.
+        Format each section with a higherarchical number (eg. "1.", "1.1", "1.2") followed by its title (e.g., "1.0 Introduction").
+        Do not use the word "Section" in any headers.
+        Each section title should be on its own line, followed by a line break before 2 or 3 lines of prompt instructions.`;
+
+      const completion = await this.groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama-3.2-90b-vision-preview',
+        temperature: 0.7,
         max_tokens: 8000,
-        temperature: 0.6
       });
 
-      const outline = response.choices[0]?.message?.content?.trim();
+      return completion.choices[0]?.message?.content || '';
+    });
+  }
+
+  // Outline Generation
+  async generateOutline(
+    researchTarget: string,
+    mode: ResearchMode,
+    type: ResearchType
+  ): Promise<string> {
+    return callWithRetry(async () => {
+      const validatedConfig = await this.validateConfig({
+        topic: researchTarget,
+        mode,
+        type,
+        researchTarget
+      });
+
+      const sectionCount = mode === 'basic' ? 4 : mode === 'advanced' ? 16 : 30;
+      let typeSpecificInstructions = '';
       
-      if (!outline) {
-        throw new ResearchError(
-          ResearchErrorType.GENERATION_ERROR, 
-          'Failed to generate outline'
-        );
+      switch(type) {
+        case 'general':
+          typeSpecificInstructions = `
+Create a general research paper outline with standard academic sections.
+Include an introduction, methodology, results, and conclusion.
+Each main section should have 2-3 subsections.`;
+          break;
+        case 'literature':
+          typeSpecificInstructions = `
+Create a literature review paper outline focusing on analyzing existing research.
+Include sections for different themes, methodological approaches, and gaps in research.
+Each main section should analyze a different aspect of the literature.`;
+          break;
+        case 'experiment':
+          typeSpecificInstructions = `
+Create an experimental research paper outline with detailed methodology.
+Include hypothesis, experimental design, data collection, and analysis sections.
+Each main section should detail a specific aspect of the experiment.`;
+          break;
       }
 
-      return outline;
+      const completion = await this.groq.chat.completions.create({
+        model: "llama-3.2-90b-vision-preview",
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert academic research assistant. Create a detailed outline for a ${validatedConfig.mode} ${validatedConfig.type} research paper with exactly ${sectionCount} total sections (including subsections).
+
+Format Requirements:
+1. Use ONLY numbered sections (1., 2., 3., etc.) for main sections
+2. Use decimal notation (1.1, 1.2, etc.) for subsections
+3. Each section must have a clear title after the number
+4. Each section must have a brief description on the next line
+5. Main sections must be clearly distinguished from subsections
+6. Ensure proper hierarchical structure
+
+${typeSpecificInstructions}`
+          },
+          {
+            role: "user",
+            content: `Generate a research outline for: ${validatedConfig.researchTarget}`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+        top_p: 1,
+        frequency_penalty: 0,
+        presence_penalty: 0
+      });
+
+      if (!completion.choices[0]?.message?.content) {
+        throw new Error('No response from AI');
+      }
+
+      return completion.choices[0].message.content;
     });
   }
 
   // Batch Section Generation
   async generateSectionBatch(
-    sections: Array<{ sectionTitle: string; sectionDescription: string }>,
-    topic: string,
-    mode: string,
-    type: string
-  ): Promise<string[]> {
-    return safeApiCall(async () => {
-      const validatedConfig = ResearchConfigSchema.parse({ 
-        topic, mode, type 
+    sections: ResearchSection[],
+    researchTarget: string,
+    mode: ResearchMode,
+    type: ResearchType
+  ): Promise<ResearchSection[]> {
+    return callWithRetry(async () => {
+      const validatedConfig = await this.validateConfig({
+        topic: researchTarget,
+        mode,
+        type,
+        researchTarget,
+        sections
       });
 
-      // Validate sections
-      if (!sections || sections.length === 0) {
-        throw new ResearchError(
-          ResearchErrorType.VALIDATION_ERROR, 
-          'No sections provided for generation'
-        );
+      const completion = await this.groq.chat.completions.create({
+        model: "llama-3.2-90b-vision-preview",
+        messages: [
+          {
+            role: "system",
+            content: "You are an academic expert who specializes in research paper outlines and content generation."
+          },
+          {
+            role: "user",
+            content: `Generate detailed content with citations in markup format for a ${validatedConfig.mode} ${validatedConfig.type} research paper about: ${validatedConfig.researchTarget}
+Do not include an introduction, conclusion, or literature search.
+Section: ${sections[0].title}
+Description: ${sections[0].content}
+
+Keep the content focused and concise while maintaining academic quality.`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: MAX_TOKENS_PER_REQUEST,
+        top_p: 1,
+        frequency_penalty: 0,
+        presence_penalty: 0
+      });
+
+      const content = completion.choices[0]?.message?.content || '';
+      
+      // Calculate tokens used for next delay
+      const totalTokens = content.split(/\s+/).length * 1.5; // Rough estimate
+      const nextDelay = calculateDelay(totalTokens);
+      await delay(nextDelay);
+
+      return sections.map(section => ({
+        ...section,
+        content: content
+      }));
+    });
+  }
+
+  // Target Generation
+  async generateTarget(
+    topic: string,
+    mode: ResearchMode,
+    type: ResearchType
+  ): Promise<string> {
+    return callWithRetry(async () => {
+      const completion = await this.groq.chat.completions.create({
+        model: "llama-3.2-90b-vision-preview",
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert academic research assistant. Your task is to refine and formalize research topics into clear, academically-structured research targets.
+For a ${mode} ${type} paper, transform the given topic into a well-defined research target that:
+1. Uses precise academic language
+2. Has a clear scope and focus
+3. Is appropriately complex for the specified mode and type
+4. Can be researched academically`
+          },
+          {
+            role: "user",
+            content: `Transform this topic into a formal research target: ${topic}`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000,
+        top_p: 1,
+        frequency_penalty: 0,
+        presence_penalty: 0
+      });
+
+      if (!completion.choices[0]?.message?.content) {
+        throw new Error('No response from AI');
       }
 
-      // Concurrent section generation
-      const sectionContents = await Promise.all(
-        sections.map(async (section) => {
-          const response = await this.groq.chat.completions.create({
-            messages: [{
-              role: "user",
-              content: `Generate content for section: ${section.sectionTitle}
-In context of ${validatedConfig.topic}
-Research Mode: ${validatedConfig.mode}
-Research Type: ${validatedConfig.type}`
-            }],
-            model: "llama-3.2-90b-vision-preview",
-            max_tokens: 8000,
-            temperature: 0.7
-          });
-
-          return response.choices[0]?.message?.content?.trim() || '';
-        })
-      );
-
-      return sectionContents;
+      return completion.choices[0].message.content.trim();
     });
   }
 
@@ -266,6 +451,33 @@ Research Type: ${validatedConfig.type}`
       if (error) throw error;
       return data || [];
     }, ResearchErrorType.NETWORK_ERROR);
+  }
+
+  private async validateConfig(config: {
+    topic: string;
+    mode: ResearchMode;
+    type: ResearchType;
+    researchTarget: string;
+    sections?: ResearchSection[];
+  }): Promise<ValidatedConfig> {
+    const validatedConfig = ResearchConfigSchema.parse({ 
+      topic: config.topic,
+      mode: config.mode,
+      type: config.type
+    });
+
+    // Only validate sections if they are provided (for section generation)
+    if (config.sections !== undefined && config.sections.length === 0) {
+      throw new ResearchError(
+        ResearchErrorType.VALIDATION_ERROR, 
+        'No sections provided for generation'
+      );
+    }
+
+    return {
+      ...validatedConfig,
+      researchTarget: config.researchTarget
+    };
   }
 }
 

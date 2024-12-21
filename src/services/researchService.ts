@@ -1,28 +1,46 @@
 import { researchApi } from './api';
-import { ResearchError, ResearchException } from './researchErrors';
-import { ResearchSection } from '../store/slices/researchSlice';
+import { ResearchSection, ResearchMode, ResearchType } from '../types/research';
+
+// Define ResearchSection interface
+interface ResearchSection {
+  number: string;
+  title: string;
+  content?: string;
+  subsections?: ResearchSection[];
+}
+
+class ResearchErrorType {
+  static VALIDATION_ERROR = 'VALIDATION_ERROR';
+  static GENERATION_ERROR = 'GENERATION_ERROR';
+}
 
 // Function to create research outline
-export async function createResearchOutline(topic: string, mode: string, type: string): Promise<ResearchSection[]> {
+async function createResearchOutline(
+  topic: string,
+  mode: ResearchMode,
+  type: ResearchType
+): Promise<ResearchSection[]> {
   try {
-    // Generate detailed outline using researchApi
-    const outline = await researchApi.generateDetailedOutline(topic, mode, type);
+    // Set number of sections based on mode (basic/advanced only, article is handled separately)
+    let sectionCount = 10;  // default for basic
+    if (mode.toLowerCase() === 'advanced') {
+      sectionCount = 30;
+    }
+    
+    // Then generate the outline
+    const outline = await researchApi.generateDetailedOutline(topic, mode, type, sectionCount);
     
     // Parse the outline into ResearchSection array
     const parsedSections: ResearchSection[] = parseOutline(outline);
     
-    return parsedSections;
+    // Ensure we don't exceed the section count based on mode
+    return parsedSections.slice(0, sectionCount);
   } catch (error) {
-    if (error instanceof ResearchException) {
-      // Handle known research exceptions
-      throw error;
-    } else {
+    if (error instanceof Error) {
       // Handle unexpected errors
-      throw new ResearchException(
-        ResearchError.GENERATION_ERROR,
-        'An unexpected error occurred while creating the research outline.'
-      );
+      throw new Error('An unexpected error occurred while creating the research outline.');
     }
+    throw error;
   }
 }
 
@@ -42,8 +60,7 @@ function parseOutline(outline: string): ResearchSection[] {
       currentSection = {
         number: match[1],
         title: match[2].trim(),
-        content: '',
-        subsections: []
+        content: ''
       };
     } else if (currentSection) {
       // Add non-header lines as content
@@ -59,35 +76,133 @@ function parseOutline(outline: string): ResearchSection[] {
 }
 
 // Example of another function utilizing researchApi
-export async function generateResearchSection(
+async function generateResearchSection(
   sectionTitle: string,
   sectionDescription: string,
   topic: string,
-  mode: string,
-  type: string
+  mode: ResearchMode,
+  type: ResearchType
 ): Promise<string> {
   try {
     const content = await researchApi.generateSectionBatch(
-      [{ sectionTitle, sectionDescription }],
+      [{
+        title: sectionTitle,
+        description: sectionDescription,
+        number: "1.0" // Default section number for single section generation
+      }],
       topic,
       mode,
       type
     );
-    return content[0] || '';
+    return content[0]?.content || '';
   } catch (error) {
-    if (error instanceof ResearchException) {
-      // Handle known research exceptions
-      throw error;
-    } else {
+    if (error instanceof Error) {
       // Handle unexpected errors
-      throw new ResearchException(
-        ResearchError.GENERATION_ERROR,
-        'An unexpected error occurred while generating the research section.'
-      );
+      throw new Error(`Failed to generate section: ${error.message}`);
     }
+    throw error;
   }
 }
 
-// Remove or comment out unused variables if any
-// Example:
-// const unusedVariable = 'This is unused';
+// Function to generate sections with numbers
+async function generateSectionsWithNumbers(
+  sections: ResearchSection[],
+  topic: string,
+  mode: ResearchMode,
+  type: ResearchType
+): Promise<ResearchSection[]> {
+  try {
+    if (!sections || sections.length === 0) {
+      throw new Error('No sections provided');
+    }
+
+    const sectionInputs = sections.map(section => ({
+      title: section.title,
+      description: '',
+      number: section.number
+    }));
+
+    const sectionContents = await researchApi.generateSectionBatch(
+      sectionInputs,
+      topic,
+      mode,
+      type
+    );
+
+    return sectionContents.map(content => ({
+      number: content.number,
+      title: content.title,
+      content: content.content
+    }));
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Failed to generate sections: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+async function generateResearchContent(
+  sections: ResearchSection[],
+  researchTarget: string,
+  mode: ResearchMode,
+  type: ResearchType
+): Promise<ResearchSection[]> {
+  try {
+    if (!sections || sections.length === 0) {
+      throw new Error('No sections provided for generation');
+    }
+
+    const sectionContents = await researchApi.generateSectionBatch(
+      sections,
+      researchTarget,
+      mode,
+      type
+    );
+
+    return transformApiResponse(sectionContents);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Failed to generate research content: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+async function generateOutline(
+  researchTarget: string,
+  mode: ResearchMode,
+  type: ResearchType
+): Promise<string> {
+  try {
+    return await researchApi.generateOutline(
+      researchTarget,
+      mode,
+      type
+    );
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Failed to generate outline: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+function transformApiResponse(sections: ResearchSection[]): ResearchSection[] {
+  return sections.map(section => ({
+    ...section,
+    content: section.content || '',
+    title: section.title,
+    number: section.number,
+    subsections: section.subsections?.map(sub => ({
+      ...sub,
+      content: sub.content || ''
+    }))
+  }));
+}
+
+export {
+  generateResearchContent,
+  generateOutline,
+  transformApiResponse
+};

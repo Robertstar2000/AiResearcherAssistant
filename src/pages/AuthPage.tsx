@@ -145,7 +145,13 @@ export default function AuthPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              sx={{ mb: 2 }}
+              sx={{ 
+                mb: 2,
+                '& label': {
+                  background: 'white',
+                  padding: '0 4px'
+                }
+              }}
             />
             <TextField
               margin="normal"
@@ -154,7 +160,13 @@ export default function AuthPage() {
               label="Username"
               value={userName}
               onChange={(e) => setUserName(e.target.value)}
-              sx={{ mb: 2 }}
+              sx={{ 
+                mb: 2,
+                '& label': {
+                  background: 'white',
+                  padding: '0 4px'
+                }
+              }}
             />
             <TextField
               margin="normal"
@@ -164,7 +176,13 @@ export default function AuthPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              sx={{ mb: 2 }}
+              sx={{ 
+                mb: 2,
+                '& label': {
+                  background: 'white',
+                  padding: '0 4px'
+                }
+              }}
             />
             <TextField
               margin="normal"
@@ -172,7 +190,13 @@ export default function AuthPage() {
               label="Occupation"
               value={occupation}
               onChange={(e) => setOccupation(e.target.value)}
-              sx={{ mb: 2 }}
+              sx={{ 
+                mb: 2,
+                '& label': {
+                  background: 'white',
+                  padding: '0 4px'
+                }
+              }}
             />
             <TextField
               margin="normal"
@@ -180,7 +204,13 @@ export default function AuthPage() {
               label="Location"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              sx={{ mb: 3 }}
+              sx={{ 
+                mb: 3,
+                '& label': {
+                  background: 'white',
+                  padding: '0 4px'
+                }
+              }}
             />
             <Button
               type="submit"
@@ -211,7 +241,13 @@ export default function AuthPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              sx={{ mb: 2 }}
+              sx={{ 
+                mb: 2,
+                '& label': {
+                  background: 'white',
+                  padding: '0 4px'
+                }
+              }}
             />
             <TextField
               margin="normal"
@@ -221,7 +257,13 @@ export default function AuthPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              sx={{ mb: 3 }}
+              sx={{ 
+                mb: 2,
+                '& label': {
+                  background: 'white',
+                  padding: '0 4px'
+                }
+              }}
             />
             <Button
               type="submit"
