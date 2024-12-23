@@ -4,149 +4,322 @@ import {
   Box,
   Button,
   LinearProgress,
-  TextField,
   Typography,
   Container,
+  Alert,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
-  Alert,
+  TextField,
   SelectChangeEvent,
 } from '@mui/material';
+import { Document, Paragraph, Packer, HeadingLevel, AlignmentType, TextRun } from 'docx';
+import { TDocumentDefinitions } from 'pdfmake/interfaces';
+import * as pdfMake from 'pdfmake/build/pdfmake';
+import * as pdfFonts from 'pdfmake/build/vfs_fonts';
+import { saveAs } from 'file-saver';
+import { ResearchSection } from '../types/research';
+import type { ResearchMode, ResearchType } from '../types/research';
 import { RootState } from '../store/store';
-import {
+import { setError } from '../store/slices/researchSlice';
+import { 
   setMode,
   setType,
   setSections,
-  setError,
   setResearchTarget,
 } from '../store/slices/researchSlice';
-import { ResearchSection, ResearchMode, ResearchType } from '../types/research';
 import { researchApi } from '../services/api';
 import { generateResearchContent } from '../services/researchService';
-import { Document, Packer, Paragraph, HeadingLevel, SectionType, TextRun } from 'docx';
-import { TDocumentDefinitions } from 'pdfmake/interfaces';
+import { convertToMarkdown, parseMarkdownToDocx } from '../services/documentService';
 
-// Import pdfMake for browser environment
-import pdfMake from 'pdfmake/build/pdfmake';
-import 'pdfmake/build/vfs_fonts';
+// Initialize pdfMake with fonts
+(pdfMake as any).vfs = (pdfFonts as any).pdfMake?.vfs;
+(pdfMake as any).fonts = {
+  Roboto: {
+    normal: 'Roboto-Regular.ttf',
+    bold: 'Roboto-Medium.ttf',
+    italics: 'Roboto-Italic.ttf',
+    bolditalics: 'Roboto-MediumItalic.ttf'
+  }
+};
 
 interface ProgressState {
   progress: number;
   message: string;
 }
 
-const ResearchPage = () => {
+export const ResearchPage: React.FC = () => {
   const dispatch = useDispatch();
   const research = useSelector((state: RootState) => state.research);
-  const [progressState, setProgressState] = useState<ProgressState>({ progress: 0, message: '' });
-  const [researchGenerated, setResearchGenerated] = useState(false);
-  const [targetGenerated, setTargetGenerated] = useState(false);
+  const [progressState, setProgressState] = useState<ProgressState>({
+    progress: 0,
+    message: '',
+  });
   const [isGenerating, setIsGenerating] = useState(false);
+  const [targetGenerated, setTargetGenerated] = useState(false);
+  const [researchGenerated, setResearchGenerated] = useState(false);
 
-  const getDocumentTitle = () => {
-    const titleMatch = research.researchTarget.match(/Title:\s*\*\*(.*?)\*\*/);
-    if (titleMatch && titleMatch[1]) {
-      const fullTitle = titleMatch[1];
-      // Get first sentence
-      const firstSentence = fullTitle.split(/[.!?]/)[0].trim();
-      return firstSentence;
-    }
-    return 'Research Paper'; // Default title
+  const extractDocumentTitle = (target: string): string => {
+    // Skip everything until after the second **
+    const afterSecondMarker = target.split('**').slice(2).join('**').trim();
+    // Get the first complete sentence
+    const match = afterSecondMarker.match(/^[^.!?]+[.!?]/);
+    return match ? match[0].trim() : afterSecondMarker;
   };
 
-  const generateTableOfContents = () => {
-    if (!research.sections) return '';
+  const parseMarkdownToPdfContent = (text: string) => {
+    const parts: Array<{ text: string; bold?: boolean; italic?: boolean; style?: string }> = [];
+    let currentText = '';
+    let i = 0;
+
+    while (i < text.length) {
+      if (text[i] === '*' || text[i] === '_' || text[i] === '#') {
+        if (currentText) {
+          parts.push({ text: currentText });
+          currentText = '';
+        }
+
+        // Headers
+        if (text[i] === '#') {
+          const headerMatch = text.slice(i).match(/^(#{1,6})\s+([^\n]+)/);
+          if (headerMatch) {
+            const level = headerMatch[1].length;
+            const headerText = headerMatch[2].trim();
+            parts.push({ 
+              text: headerText,
+              style: `header${level}`,
+              bold: true
+            });
+            i += headerMatch[0].length;
+            continue;
+          }
+        }
+
+        // Bold
+        if (text.slice(i, i + 2) === '**' || text.slice(i, i + 2) === '__') {
+          const endIndex = text.indexOf(text.slice(i, i + 2), i + 2);
+          if (endIndex !== -1) {
+            parts.push({ 
+              text: text.slice(i + 2, endIndex),
+              bold: true
+            });
+            i = endIndex + 2;
+            continue;
+          }
+        }
+
+        // Italic
+        if (text[i] === '*' || text[i] === '_') {
+          const endIndex = text.indexOf(text[i], i + 1);
+          if (endIndex !== -1) {
+            parts.push({ 
+              text: text.slice(i + 1, endIndex),
+              italic: true
+            });
+            i = endIndex + 1;
+            continue;
+          }
+        }
+      }
+
+      currentText += text[i];
+      i++;
+    }
+
+    if (currentText) {
+      parts.push({ text: currentText });
+    }
+
+    return parts;
+  };
+
+  const parseMarkdownToWordContent = (text: string): Paragraph[] => {
+    const paragraphs: Paragraph[] = [];
+    const lines = text.split('\n');
     
-    let toc = 'Table of Contents\n\n';
-    research.sections.forEach(section => {
-      toc += `${section.number}. ${section.title}\n`;
-      if (section.subsections) {
-        section.subsections.forEach(sub => {
-          toc += `    ${sub.number}. ${sub.title}\n`;
-        });
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      // Headers
+      const headerMatch = line.match(/^(#{1,6})\s+(.+)/);
+      if (headerMatch) {
+        const level = headerMatch[1].length;
+        const headerText = headerMatch[2].trim();
+        paragraphs.push(
+          new Paragraph({
+            text: headerText,
+            heading: level === 1 ? HeadingLevel.HEADING_1 : 
+                    level === 2 ? HeadingLevel.HEADING_2 :
+                    level === 3 ? HeadingLevel.HEADING_3 : HeadingLevel.HEADING_4,
+            spacing: { before: 200, after: 100 }
+          })
+        );
+        continue;
       }
-    });
-    return toc;
-  };
 
-  const parseOutline = (content: string): ResearchSection[] => {
-    const lines = content.split('\n').filter(line => line.trim());
-    const sections: ResearchSection[] = [];
-    let currentMainSection: ResearchSection | null = null;
-    let currentSubSection: ResearchSection | null = null;
+      // Regular paragraph with inline formatting
+      const textRuns: TextRun[] = [];
+      let currentText = '';
+      let j = 0;
 
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      
-      // Match main sections (e.g., "1.", "2.", etc.)
-      const mainSectionMatch = trimmedLine.match(/^(\d+\.)\s+(.+)/);
-      
-      // Match subsections (e.g., "1.1.", "2.1.", etc.)
-      const subSectionMatch = trimmedLine.match(/^(\d+\.\d+\.?)\s+(.+)/);
+      while (j < line.length) {
+        if (line[j] === '*' || line[j] === '_') {
+          if (currentText) {
+            textRuns.push(new TextRun({ text: currentText }));
+            currentText = '';
+          }
 
-      if (mainSectionMatch && !subSectionMatch) {
-        // If we have a previous main section, save it
-        if (currentMainSection) {
-          sections.push(currentMainSection);
+          // Bold
+          if (line.slice(j, j + 2) === '**' || line.slice(j, j + 2) === '__') {
+            const endIndex = line.indexOf(line.slice(j, j + 2), j + 2);
+            if (endIndex !== -1) {
+              textRuns.push(
+                new TextRun({
+                  text: line.slice(j + 2, endIndex),
+                  bold: true
+                })
+              );
+              j = endIndex + 2;
+              continue;
+            }
+          }
+
+          // Italic
+          const endIndex = line.indexOf(line[j], j + 1);
+          if (endIndex !== -1) {
+            textRuns.push(
+              new TextRun({
+                text: line.slice(j + 1, endIndex),
+                italics: true
+              })
+            );
+            j = endIndex + 1;
+            continue;
+          }
         }
-        
-        // Start new main section
-        currentMainSection = {
-          number: mainSectionMatch[1],
-          title: mainSectionMatch[2],
-          content: '',
-          subsections: []
-        };
-        currentSubSection = null;
-        
-      } else if (subSectionMatch && currentMainSection) {
-        // If we have a previous subsection, save it
-        if (currentSubSection) {
-          currentMainSection.subsections?.push(currentSubSection);
-        }
-        
-        // Start new subsection
-        currentSubSection = {
-          number: subSectionMatch[1],
-          title: subSectionMatch[2],
-          content: ''
-        };
-        
-      } else if (currentSubSection) {
-        // Add description to current subsection
-        currentSubSection.content = currentSubSection.content
-          ? `${currentSubSection.content}\n${trimmedLine}`
-          : trimmedLine;
-          
-      } else if (currentMainSection) {
-        // Add description to current main section
-        currentMainSection.content = currentMainSection.content
-          ? `${currentMainSection.content}\n${trimmedLine}`
-          : trimmedLine;
+
+        currentText += line[j];
+        j++;
       }
+
+      if (currentText) {
+        textRuns.push(new TextRun({ text: currentText }));
+      }
+
+      paragraphs.push(
+        new Paragraph({
+          children: textRuns,
+          spacing: { before: 100, after: 100 }
+        })
+      );
     }
 
-    // Save the last sections if they exist
-    if (currentSubSection && currentMainSection) {
-      currentMainSection.subsections?.push(currentSubSection);
-    }
-    if (currentMainSection) {
-      sections.push(currentMainSection);
-    }
-
-    return sections;
+    return paragraphs;
   };
 
   const handleDocumentGeneration = async () => {
+    if (!research.researchTarget) {
+      dispatch(setError('Please enter a research target'));
+      return;
+    }
+
+    setIsGenerating(true);
+    setProgressState({
+      progress: 0,
+      message: 'Starting research generation...',
+    });
+
     try {
-      setIsGenerating(true);
-      dispatch(setError(undefined));
-      setProgressState({
-        progress: 0,
-        message: 'Generating research content...',
-      });
+      const outline = await researchApi.generateOutline(
+        research.researchTarget,
+        research.mode,
+        research.type
+      );
+
+      console.log('Raw outline:', outline);
+
+      const parsedSections: ResearchSection[] = outline
+        .split('\n')
+        .filter((line: string) => line.trim())
+        .map((line: string): ResearchSection => {
+          const trimmedLine = line.trim()
+            .replace(/^\*\*/, '') // Remove starting **
+            .replace(/\*\*$/, '') // Remove ending **
+            .replace(/^0\s+/, ''); // Remove leading "0 "
+          
+          console.log('Processing line:', trimmedLine);
+          
+          const mainSectionMatch = trimmedLine.match(/^(\d+)\.\s+(.+)/);
+          const subSectionMatch = trimmedLine.match(/^(\d+\.\d+)\s+(.+)/);
+          
+          if (mainSectionMatch) {
+            console.log('Main section match:', mainSectionMatch[1], mainSectionMatch[2]);
+            return {
+              number: mainSectionMatch[1] + '.',
+              title: mainSectionMatch[2].replace(/^\*\*|\*\*$/g, '').trim(),
+              content: '',
+              subsections: []
+            };
+          } else if (subSectionMatch) {
+            console.log('Sub section match:', subSectionMatch[1], subSectionMatch[2]);
+            return {
+              number: subSectionMatch[1],
+              title: subSectionMatch[2].trim(),
+              content: '',
+              subsections: []
+            };
+          } else {
+            console.log('Content line:', trimmedLine);
+            return {
+              number: '',
+              title: trimmedLine,
+              content: trimmedLine,
+              subsections: []
+            };
+          }
+        })
+        .reduce((acc: ResearchSection[], curr: ResearchSection) => {
+          if (curr.number) {
+            if (curr.number.includes('.') && curr.number.split('.').length > 2) {
+              // This is a subsection (e.g., 1.1)
+              if (acc.length > 0) {
+                const lastSection = acc[acc.length - 1];
+                lastSection.subsections = lastSection.subsections || [];
+                lastSection.subsections.push(curr);
+              }
+            } else {
+              // This is a main section (e.g., 1.)
+              acc.push(curr);
+            }
+          } else if (acc.length > 0) {
+            // This is content for the previous section or subsection
+            const lastSection = acc[acc.length - 1];
+            if (lastSection.subsections && lastSection.subsections.length > 0) {
+              // Add to the last subsection
+              const lastSubsection = lastSection.subsections[lastSection.subsections.length - 1];
+              lastSubsection.content = curr.title;
+            } else {
+              // Add to the main section
+              lastSection.content = curr.title;
+            }
+          }
+          return acc;
+        }, []);
+
+      console.log('Final parsed sections:', parsedSections);
+
+      if (parsedSections.length > 0) {
+        dispatch(setSections(parsedSections));
+        setProgressState({
+          progress: 100,
+          message: 'Research outline generated successfully!',
+        });
+        setTargetGenerated(true);
+      } else {
+        throw new Error('No sections were parsed from the outline');
+      }
 
       if (!research.sections) {
         throw new Error('No outline sections found');
@@ -235,13 +408,88 @@ const ResearchPage = () => {
         research.type
       );
 
-      const parsedSections = parseOutline(outline);
-      dispatch(setSections(parsedSections));
-      setProgressState({
-        progress: 100,
-        message: 'Outline generated successfully!',
-      });
-      setResearchGenerated(false);
+      console.log('Raw outline:', outline);
+
+      const parsedSections: ResearchSection[] = outline
+        .split('\n')
+        .filter((line: string) => line.trim())
+        .map((line: string): ResearchSection => {
+          const trimmedLine = line.trim()
+            .replace(/^\*\*/, '') // Remove starting **
+            .replace(/\*\*$/, '') // Remove ending **
+            .replace(/^0\s+/, ''); // Remove leading "0 "
+          
+          console.log('Processing line:', trimmedLine);
+          
+          const mainSectionMatch = trimmedLine.match(/^(\d+)\.\s+(.+)/);
+          const subSectionMatch = trimmedLine.match(/^(\d+\.\d+)\s+(.+)/);
+          
+          if (mainSectionMatch) {
+            console.log('Main section match:', mainSectionMatch[1], mainSectionMatch[2]);
+            return {
+              number: mainSectionMatch[1] + '.',
+              title: mainSectionMatch[2].replace(/^\*\*|\*\*$/g, '').trim(),
+              content: '',
+              subsections: []
+            };
+          } else if (subSectionMatch) {
+            console.log('Sub section match:', subSectionMatch[1], subSectionMatch[2]);
+            return {
+              number: subSectionMatch[1],
+              title: subSectionMatch[2].trim(),
+              content: '',
+              subsections: []
+            };
+          } else {
+            console.log('Content line:', trimmedLine);
+            return {
+              number: '',
+              title: trimmedLine,
+              content: trimmedLine,
+              subsections: []
+            };
+          }
+        })
+        .reduce((acc: ResearchSection[], curr: ResearchSection) => {
+          if (curr.number) {
+            if (curr.number.includes('.') && curr.number.split('.').length > 2) {
+              // This is a subsection (e.g., 1.1)
+              if (acc.length > 0) {
+                const lastSection = acc[acc.length - 1];
+                lastSection.subsections = lastSection.subsections || [];
+                lastSection.subsections.push(curr);
+              }
+            } else {
+              // This is a main section (e.g., 1.)
+              acc.push(curr);
+            }
+          } else if (acc.length > 0) {
+            // This is content for the previous section or subsection
+            const lastSection = acc[acc.length - 1];
+            if (lastSection.subsections && lastSection.subsections.length > 0) {
+              // Add to the last subsection
+              const lastSubsection = lastSection.subsections[lastSection.subsections.length - 1];
+              lastSubsection.content = curr.title;
+            } else {
+              // Add to the main section
+              lastSection.content = curr.title;
+            }
+          }
+          return acc;
+        }, []);
+
+      console.log('Final parsed sections:', parsedSections);
+
+      if (parsedSections.length > 0) {
+        dispatch(setSections(parsedSections));
+        setProgressState({
+          progress: 100,
+          message: 'Outline generated successfully!',
+        });
+        setResearchGenerated(false);
+      } else {
+        throw new Error('No sections were parsed from the outline');
+      }
     } catch (error) {
       console.error('Error generating outline:', error);
       dispatch(setError('Failed to generate outline'));
@@ -280,174 +528,237 @@ const ResearchPage = () => {
     }
   };
 
-  const handleDownloadWord = async () => {
-    try {
-      const title = getDocumentTitle();
-      const toc = generateTableOfContents();
-
-      dispatch(setError(undefined));
-      setProgressState({
-        progress: 0,
-        message: 'Generating Word document...',
-      });
-
-      // Create document
-      const doc = new Document({
-        sections: [{
-          properties: { type: SectionType.CONTINUOUS },
-          children: [
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: title,
-                  size: 32,
-                  bold: true
-                })
-              ]
-            }),
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: toc
-                })
-              ]
-            }),
-            ...(research.sections?.flatMap(section => [
-              new Paragraph({
-                heading: HeadingLevel.HEADING_1,
-                children: [
-                  new TextRun({
-                    text: `${section.number}. ${section.title}`,
-                    size: 28,
-                    bold: true
-                  })
-                ]
-              }),
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: section.content || ''
-                  })
-                ]
-              }),
-              ...(section.subsections?.flatMap(sub => [
-                new Paragraph({
-                  heading: HeadingLevel.HEADING_2,
-                  children: [
-                    new TextRun({
-                      text: `${sub.number}. ${sub.title}`,
-                      size: 24,
-                      bold: true
-                    })
-                  ]
-                }),
-                new Paragraph({
-                  children: [
-                    new TextRun({
-                      text: sub.content || ''
-                    })
-                  ]
-                })
-              ]) || [])
-            ]) || [])
-          ]
-        }]
-      });
-
-      // Convert to blob
-      const blob = await Packer.toBlob(doc);
-      
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${title.substring(0, 30)}.docx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      setProgressState({
-        progress: 100,
-        message: 'Word document generated successfully!',
-      });
-    } catch (error) {
-      console.error('Error downloading Word document:', error);
-      dispatch(setError('Failed to download Word document'));
-    }
-  };
-
   const handleDownloadPdf = async () => {
     try {
-      const title = getDocumentTitle();
-      const toc = generateTableOfContents();
+      if (!research.sections || research.sections.length === 0) {
+        dispatch(setError('No content available to generate PDF'));
+        return;
+      }
 
-      dispatch(setError(undefined));
-      setProgressState({
-        progress: 0,
-        message: 'Generating PDF...',
-      });
-
-      const content: any[] = [
-        { text: title, style: 'header' },
-        { text: toc, style: 'toc' }
-      ];
-
-      // Add sections
-      research.sections?.forEach(section => {
-        content.push({ text: `${section.number}. ${section.title}`, style: 'section' });
-        if (section.content) {
-          content.push({ text: section.content, style: 'sectionContent' });
-        }
-        
-        section.subsections?.forEach(sub => {
-          content.push({ text: `${sub.number}. ${sub.title}`, style: 'subsection' });
-          if (sub.content) {
-            content.push({ text: sub.content, style: 'subsectionContent' });
-          }
-        });
-      });
-
+      const documentTitle = extractDocumentTitle(research.researchTarget || '');
       const docDefinition: TDocumentDefinitions = {
-        content,
+        content: [
+          {
+            text: documentTitle,
+            style: 'title'
+          },
+          {
+            text: 'AI Research Assistant',
+            style: 'author'
+          },
+          {
+            text: 'MIFECO company mifecoinc@gmail.com',
+            style: 'author'
+          },
+          {
+            text: '',
+            pageBreak: 'before'
+          },
+          ...research.sections.map(section => [
+            {
+              text: section.title,
+              style: 'sectionHeader'
+            },
+            ...parseMarkdownToPdfContent(section.content || ''),
+            ...(section.subsections?.map(sub => [
+              {
+                text: sub.title,
+                style: 'subsectionHeader'
+              },
+              ...parseMarkdownToPdfContent(sub.content || '')
+            ]).flat() || [])
+          ]).flat()
+        ],
         styles: {
-          header: {
+          title: {
             fontSize: 24,
             bold: true,
-            alignment: 'center'
+            alignment: 'center',
+            margin: [0, 100, 0, 20]
           },
-          toc: {
+          author: {
+            fontSize: 14,
+            alignment: 'center',
+            margin: [0, 0, 0, 10]
+          },
+          sectionHeader: {
             fontSize: 18,
             bold: true,
-            alignment: 'center'
+            margin: [0, 20, 0, 10]
           },
-          section: {
-            fontSize: 18,
-            bold: true
-          },
-          sectionContent: {
-            fontSize: 14
-          },
-          subsection: {
+          subsectionHeader: {
             fontSize: 16,
-            bold: true
+            bold: true,
+            margin: [0, 15, 0, 10]
           },
-          subsectionContent: {
-            fontSize: 14
+          header1: {
+            fontSize: 20,
+            bold: true,
+            margin: [0, 20, 0, 10]
+          },
+          header2: {
+            fontSize: 18,
+            bold: true,
+            margin: [0, 15, 0, 10]
+          },
+          header3: {
+            fontSize: 16,
+            bold: true,
+            margin: [0, 10, 0, 10]
+          },
+          content: {
+            fontSize: 12,
+            margin: [0, 0, 0, 10],
+            lineHeight: 1.5
           }
+        },
+        defaultStyle: {
+          font: 'Roboto',
+          fontSize: 12,
+          lineHeight: 1.5
         }
       };
 
       const pdfDoc = pdfMake.createPdf(docDefinition);
-      pdfDoc.download(`${title.substring(0, 30)}.pdf`);
-
-      setProgressState({
-        progress: 100,
-        message: 'PDF generated successfully!',
+      pdfDoc.getBlob((blob: Blob) => {
+        saveAs(blob, 'research.pdf');
       });
     } catch (error) {
-      console.error('Error downloading PDF:', error);
-      dispatch(setError('Failed to download PDF'));
+      console.error('Error generating PDF:', error);
+      dispatch(setError('Failed to generate PDF'));
+    }
+  };
+
+  const handleDownloadWord = async () => {
+    try {
+      if (!research.sections || research.sections.length === 0) {
+        dispatch(setError('No content available to generate Word document'));
+        return;
+      }
+
+      const documentTitle = extractDocumentTitle(research.researchTarget || '');
+      const doc = new Document({
+        sections: [{
+          properties: {},
+          children: [
+            // Title Page
+            new Paragraph({
+              text: documentTitle,
+              heading: HeadingLevel.TITLE,
+              spacing: { before: 400, after: 200 },
+              alignment: AlignmentType.CENTER
+            }),
+            new Paragraph({
+              text: 'AI Research Assistant',
+              spacing: { before: 200, after: 100 },
+              alignment: AlignmentType.CENTER
+            }),
+            new Paragraph({
+              text: 'MIFECO company mifecoinc@gmail.com',
+              spacing: { before: 100, after: 400 },
+              alignment: AlignmentType.CENTER
+            }),
+            // Content (new page)
+            new Paragraph({
+              text: '',
+              pageBreakBefore: true
+            }),
+            ...research.sections.flatMap(section => {
+              if (!section.content && (!section.subsections || section.subsections.length === 0)) {
+                return [];
+              }
+
+              const sectionContent = [];
+              if (section.content) {
+                sectionContent.push(
+                  new Paragraph({
+                    text: section.title,
+                    heading: HeadingLevel.HEADING_1,
+                    spacing: { before: 400, after: 200 }
+                  }),
+                  ...parseMarkdownToWordContent(section.content)
+                );
+              }
+
+              if (section.subsections) {
+                const subsectionsWithContent = section.subsections.filter(sub => sub.content);
+                if (subsectionsWithContent.length > 0) {
+                  sectionContent.push(
+                    ...subsectionsWithContent.flatMap(sub => [
+                      new Paragraph({
+                        text: sub.title,
+                        heading: HeadingLevel.HEADING_2,
+                        spacing: { before: 300, after: 200 }
+                      }),
+                      ...parseMarkdownToWordContent(sub.content || '')
+                    ])
+                  );
+                }
+              }
+
+              return sectionContent;
+            })
+          ]
+        }]
+      });
+
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, 'research.docx');
+    } catch (error) {
+      console.error('Error generating Word document:', error);
+      dispatch(setError('Failed to generate Word document'));
+    }
+  };
+
+  const handleExportMarkdown = () => {
+    try {
+      if (!research.sections || research.sections.length === 0) {
+        dispatch(setError('No content available to export'));
+        return;
+      }
+
+      const markdownContent = convertToMarkdown(research.sections);
+      const blob = new Blob([markdownContent], { type: 'text/markdown; charset=utf-8' });
+      saveAs(blob, 'research.md');
+    } catch (error) {
+      console.error('Error exporting markdown:', error);
+      dispatch(setError('Failed to export markdown file'));
+    }
+  };
+
+  const handleImportMarkdown = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      const file = event.target.files?.[0];
+      if (!file) {
+        dispatch(setError('No file selected'));
+        return;
+      }
+
+      const text = await file.text();
+      const sections = parseMarkdownToDocx(text);
+
+      if (!sections || sections.length === 0) {
+        throw new Error('Failed to parse markdown content');
+      }
+
+      const formattedSections = sections.map((section: ResearchSection) => ({
+        ...section,
+        content: section.content || '',
+        subsections: section.subsections?.map((sub: ResearchSection) => ({
+          ...sub,
+          content: sub.content || ''
+        })) || []
+      }));
+
+      dispatch(setSections(formattedSections));
+      setProgressState({
+        progress: 100,
+        message: 'Markdown imported successfully!',
+      });
+      setResearchGenerated(false);
+    } catch (error) {
+      console.error('Error importing markdown:', error);
+      dispatch(setError('Failed to import markdown'));
     }
   };
 
@@ -533,7 +844,7 @@ const ResearchPage = () => {
             id="mode-select"
             value={research.mode}
             label="Mode"
-            onChange={(e: SelectChangeEvent<ResearchMode>) => {
+            onChange={(e: SelectChangeEvent) => {
               dispatch(setMode(e.target.value as ResearchMode));
             }}
           >
@@ -550,7 +861,7 @@ const ResearchPage = () => {
             id="type-select"
             value={research.type}
             label="Type"
-            onChange={(e: SelectChangeEvent<ResearchType>) => {
+            onChange={(e: SelectChangeEvent) => {
               dispatch(setType(e.target.value as ResearchType));
             }}
           >
@@ -572,14 +883,14 @@ const ResearchPage = () => {
         fullWidth
         multiline
         rows={4}
+        variant="outlined"
+        label="Research Target"
         value={research.researchTarget}
-        onChange={(e) => {
+        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
           dispatch(setResearchTarget(e.target.value));
           setTargetGenerated(false);
           setResearchGenerated(false);
         }}
-        placeholder="Enter your research target..."
-        sx={{ mb: 2 }}
       />
       <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
         <Button
@@ -641,6 +952,34 @@ const ResearchPage = () => {
         >
           Download PDF
         </Button>
+        <Button
+          variant="contained"
+          onClick={handleExportMarkdown}
+          disabled={!researchGenerated || isGenerating}
+          sx={{
+            backgroundColor: researchGenerated ? 'primary.main' : 'grey.500',
+            '&:hover': {
+              backgroundColor: researchGenerated ? 'primary.dark' : 'grey.600',
+            },
+          }}
+        >
+          Export Markdown
+        </Button>
+        <input
+          type="file"
+          accept=".md"
+          onChange={handleImportMarkdown}
+          style={{ display: 'none' }}
+          id="markdown-import"
+        />
+        <label htmlFor="markdown-import">
+          <Button
+            variant="contained"
+            onClick={() => document.getElementById('markdown-import')?.click()}
+          >
+            Import Markdown
+          </Button>
+        </label>
       </Box>
     </>
   );
@@ -660,62 +999,175 @@ const ResearchPage = () => {
       </Typography>
 
       <Typography variant="body1" gutterBottom sx={{ fontWeight: 'bold' }}>
-        1. Account Setup
+        1. Account Setup & Security
       </Typography>
       <Typography variant="body2" sx={{ mb: 2 }}>
-        • Click "Sign Up" to create new account
-        • Provide email and secure password
-        • Verify email if required
-        • Use "Sign In" with your credentials
+        • Creating an Account:
+          - Click "Sign Up" in the top navigation
+          - Enter your email address (used for account recovery)
+          - Create a strong password (min. 8 characters)
+          - Verify your email through the confirmation link
+        
+        • Logging In:
+          - Use "Sign In" with your registered email
+          - Enter your password
+          - Enable "Remember Me" for convenience
+          - Use "Forgot Password" if needed
+        
+        • Account Security:
+          - Keep your credentials secure
+          - Change password periodically
+          - Log out when using shared devices
       </Typography>
 
       <Typography variant="body1" gutterBottom sx={{ fontWeight: 'bold' }}>
-        2. Research Settings
+        2. Research Settings Configuration
       </Typography>
       <Typography variant="body2" sx={{ mb: 2 }}>
-        • Select Research Mode:
-          - Basic: Shorter, simpler papers
-          - Advanced: Detailed academic papers
-          - Expert: Comprehensive research
-        • Choose Research Type:
-          - General: Standard research
-          - Literature: Focus on existing research
-          - Experimental: Scientific experiments
+        • Research Mode (Determines Depth & Length):
+          - Basic Mode (5-7 pages):
+            * Quick overview of topics
+            * Key points and main arguments
+            * Suitable for brief reports
+            * Faster generation time
+          
+          - Advanced Mode (10-15 pages):
+            * Detailed analysis of topics
+            * Supporting evidence and examples
+            * Citations and references
+            * Balanced for most academic needs
+          
+          - Expert Mode (20+ pages):
+            * Comprehensive coverage
+            * In-depth analysis
+            * Extensive references
+            * Suitable for thesis/dissertation
+        
+        • Research Type (Determines Approach):
+          - General Research:
+            * Balanced mix of analysis
+            * Covers multiple perspectives
+            * Includes background information
+            * Best for most topics
+          
+          - Literature Review:
+            * Focus on existing research
+            * Analysis of current literature
+            * Comparison of different studies
+            * Best for academic reviews
+          
+          - Experimental Research:
+            * Methodology-focused
+            * Data analysis emphasis
+            * Results and discussion
+            * Best for scientific studies
       </Typography>
 
       <Typography variant="body1" gutterBottom sx={{ fontWeight: 'bold' }}>
-        3. Research Process
+        3. Research Target Refinement
       </Typography>
       <Typography variant="body2" sx={{ mb: 2 }}>
-        a) Enter Research Topic
-        • Input your research subject
-        • Click "Generate Target" for refined focus
+        • Initial Setup:
+          - Enter your broad research topic
+          - Be specific but not too narrow
+          - Include key aspects you want to cover
         
-        b) Generate Outline
-        • Wait for target generation
-        • Click "Generate Outline" (blue when ready)
-        • Review the generated outline
+        • Using Generate Target:
+          - AI analyzes your input
+          - Suggests focused research direction
+          - Adds relevant subtopics
+          - Structures the research scope
         
-        c) Generate Content
-        • Click "Generate Research" (blue when ready)
-        • Wait for section-by-section generation
-        • Each section takes time due to AI processing
-        
-        d) Export Options
-        • Download as Word document
-        • Download as PDF
-        • All formatting included
+        • Fine-tuning the Target:
+          - Edit the generated target text
+          - Add specific areas of interest
+          - Remove unwanted aspects
+          - Adjust scope and direction
+          - Each edit influences final content
+          - Can regenerate target if needed
       </Typography>
 
       <Typography variant="body1" gutterBottom sx={{ fontWeight: 'bold' }}>
-        4. Tips
+        4. Research Generation Process
       </Typography>
       <Typography variant="body2" sx={{ mb: 2 }}>
-        • Be patient during generation
-        • Don't refresh during processing
-        • Save work regularly
-        • Check progress bar for status
-        • Error messages will guide if issues occur
+        • Step 1: Generate Target
+          - Refines your research focus
+          - Creates structured approach
+          - Identifies key areas
+          - Wait for completion (blue button)
+        
+        • Step 2: Generate Outline
+          - Creates detailed structure
+          - Organizes main sections
+          - Adds relevant subsections
+          - Shows research flow
+          - Review before proceeding
+        
+        • Step 3: Generate Research
+          - Processes section by section
+          - Creates detailed content
+          - Adds citations and references
+          - Maintains academic style
+          - Progress bar shows status
+      </Typography>
+
+      <Typography variant="body1" gutterBottom sx={{ fontWeight: 'bold' }}>
+        5. Document Management
+      </Typography>
+      <Typography variant="body2" sx={{ mb: 2 }}>
+        • Export Options:
+          - Word (.docx):
+            * Professional formatting
+            * Easy to edit
+            * Compatible with Office
+          
+          - PDF:
+            * Print-ready format
+            * Consistent layout
+            * Best for sharing
+          
+          - Markdown (.md):
+            * Plain text with formatting
+            * Version control friendly
+            * Easy to edit in any editor
+        
+        • Working with Markdown:
+          - Export Markdown:
+            * Saves all content and structure
+            * Preserves formatting
+            * Lightweight file format
+            * Easy to share and backup
+          
+          - Import Markdown:
+            * Load previous research
+            * Continue work later
+            * Merge multiple documents
+            * Share with collaborators
+            * Edit in external editors
+      </Typography>
+
+      <Typography variant="body1" gutterBottom sx={{ fontWeight: 'bold' }}>
+        6. Best Practices & Tips
+      </Typography>
+      <Typography variant="body2" sx={{ mb: 2 }}>
+        • During Generation:
+          - Be patient with AI processing
+          - Watch progress bar for status
+          - Don't refresh the page
+          - Save work regularly
+        
+        • Workflow Tips:
+          - Export to Markdown frequently
+          - Review each step's output
+          - Fine-tune target if needed
+          - Use appropriate mode for needs
+        
+        • Troubleshooting:
+          - Check error messages
+          - Retry if generation fails
+          - Contact support if needed
+          - Use Import/Export for backup
       </Typography>
     </Box>
   );
