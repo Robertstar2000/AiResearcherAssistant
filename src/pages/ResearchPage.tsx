@@ -34,15 +34,23 @@ import { generateResearchContent } from '../services/researchService';
 import { convertToMarkdown, parseMarkdownToDocx } from '../services/documentService';
 
 // Initialize pdfMake with fonts
-(pdfMake as any).vfs = (pdfFonts as any).pdfMake?.vfs;
-(pdfMake as any).fonts = {
-  Roboto: {
-    normal: 'Roboto-Regular.ttf',
-    bold: 'Roboto-Medium.ttf',
-    italics: 'Roboto-Italic.ttf',
-    bolditalics: 'Roboto-MediumItalic.ttf'
+const pdfConfig = {
+  vfs: (pdfFonts as any).pdfMake?.vfs,
+  fonts: {
+    Roboto: {
+      normal: 'Roboto-Regular.ttf',
+      bold: 'Roboto-Medium.ttf',
+      italics: 'Roboto-Italic.ttf',
+      bolditalics: 'Roboto-MediumItalic.ttf'
+    }
   }
 };
+
+// Apply configuration if VFS is available
+if (pdfConfig.vfs) {
+  Object.assign(pdfMake.vfs || {}, pdfConfig.vfs);
+  Object.assign(pdfMake.fonts || {}, pdfConfig.fonts);
+}
 
 interface ProgressState {
   progress: number;
