@@ -235,10 +235,20 @@ export class ResearchApiService {
 
       const prompt = `Generate a detailed research outline for a ${validType} research on "${validTopic}". 
         The outline should have exactly ${sectionCount} main sections, appropriate for a ${validMode} level research paper.
-        Each section should have a descriptive title that clearly indicates its content.
-        Format each section with a higherarchical number (eg. "1.", "1.1", "1.2") followed by its title (e.g., "1.0 Introduction").
-        Do not use the word "Section" in any headers.
-        Each section title should be on its own line, followed by a line break before 2 or 3 lines of prompt instructions.`;
+        Each section should be unique and have a descriptive title that clearly indicates its content.
+        Follow these exact formatting rules:
+        1. Main sections should be numbered like "1.", "2.", "3." followed by the title
+        2. Subsections should be numbered like "1.1", "1.2", "1.3" followed by the title
+        3. Each section and subsection should start on a new line
+        4. Content should be on the line immediately after its section/subsection title
+        5. Do not use the word "Section" in any headers
+        6. Do not add any extra numbering or prefixes
+        Example format:
+        1. Introduction
+        1.1 Background
+        Brief background content here
+        1.2 Objectives
+        Research objectives content here`;
 
       const completion = await this.groq.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
