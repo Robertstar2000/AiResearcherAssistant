@@ -1,14 +1,6 @@
 import { researchApi } from './api';
 import { ResearchSection, ResearchMode, ResearchType } from '../types/research';
 
-// Define ResearchSection interface
-interface ResearchSection {
-  number: string;
-  title: string;
-  content?: string;
-  subsections?: ResearchSection[];
-}
-
 class ResearchErrorType {
   static VALIDATION_ERROR = 'VALIDATION_ERROR';
   static GENERATION_ERROR = 'GENERATION_ERROR';
@@ -49,22 +41,37 @@ function parseOutline(outline: string): ResearchSection[] {
   const lines = outline.split('\n').filter(line => line.trim());
   const sections: ResearchSection[] = [];
   let currentSection: ResearchSection | null = null;
+  let currentSubsection: ResearchSection | null = null;
 
   for (const line of lines) {
-    // Check if line starts with a number (section header)
-    const match = line.match(/^(\d+\.?(?:\d+)?)\s*(.*)/);
-    if (match) {
+    const mainSectionMatch = line.match(/^(\d+\.)\s+(.+)/);
+    const subSectionMatch = line.match(/^(\d+\.\d+)\s+(.+)/);
+
+    if (mainSectionMatch) {
       if (currentSection) {
         sections.push(currentSection);
       }
       currentSection = {
-        number: match[1],
-        title: match[2].trim(),
+        number: mainSectionMatch[1],
+        title: mainSectionMatch[2].trim(),
+        content: '',
+        subsections: []
+      };
+      currentSubsection = null;
+    } else if (subSectionMatch && currentSection) {
+      currentSubsection = {
+        number: subSectionMatch[1],
+        title: subSectionMatch[2].trim(),
         content: ''
       };
-    } else if (currentSection) {
-      // Add non-header lines as content
-      currentSection.content += (currentSection.content ? '\n' : '') + line.trim();
+      currentSection.subsections?.push(currentSubsection);
+    } else if (line.trim()) {
+      // Add content to either the current subsection or main section
+      if (currentSubsection) {
+        currentSubsection.content = (currentSubsection.content || '') + (currentSubsection.content ? '\n' : '') + line.trim();
+      } else if (currentSection) {
+        currentSection.content = (currentSection.content || '') + (currentSection.content ? '\n' : '') + line.trim();
+      }
     }
   }
 
@@ -87,8 +94,8 @@ async function generateResearchSection(
     const content = await researchApi.generateSectionBatch(
       [{
         title: sectionTitle,
-        description: sectionDescription,
-        number: "1.0" // Default section number for single section generation
+        number: "1.0", // Default section number for single section generation
+        content: sectionDescription
       }],
       topic,
       mode,
@@ -204,5 +211,9 @@ function transformApiResponse(sections: ResearchSection[]): ResearchSection[] {
 export {
   generateResearchContent,
   generateOutline,
-  transformApiResponse
+  transformApiResponse,
+  createResearchOutline,
+  generateResearchSection,
+  generateSectionsWithNumbers,
+  ResearchErrorType
 };
