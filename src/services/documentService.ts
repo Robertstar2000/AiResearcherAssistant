@@ -1,4 +1,4 @@
-import { Document, Paragraph, HeadingLevel, AlignmentType } from 'docx';
+import { Document, Paragraph, HeadingLevel, AlignmentType, TableOfContents } from 'docx';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { ResearchSection } from '../types/research';
 
@@ -106,7 +106,7 @@ const wrapText = (text: string, font: any, fontSize: number, maxWidth: number): 
   return lines;
 };
 
-// Extract document title from research target
+// Extract and clean document title from research target
 const extractDocumentTitle = (researchTarget: string): string => {
   const titleStart = researchTarget.indexOf("Title: ");
   if (titleStart === -1) {
@@ -119,7 +119,7 @@ const extractDocumentTitle = (researchTarget: string): string => {
   
   let titleEnd;
   if (asteriskEnd === -1 && newlineEnd === -1) {
-    return researchTarget.substring(startIndex).trim();
+    titleEnd = researchTarget.length;
   } else if (asteriskEnd === -1) {
     titleEnd = newlineEnd;
   } else if (newlineEnd === -1) {
@@ -128,11 +128,27 @@ const extractDocumentTitle = (researchTarget: string): string => {
     titleEnd = Math.min(asteriskEnd, newlineEnd);
   }
   
-  return researchTarget.substring(startIndex, titleEnd).trim();
+  let title = researchTarget.substring(startIndex, titleEnd).trim();
+  
+  // Remove quotation marks
+  title = title.replace(/['"]/g, '');
+  
+  // Check for groups of spaces and truncate if found
+  const spaceGroupMatch = title.match(/\s{4,}/);
+  if (spaceGroupMatch) {
+    title = title.substring(0, spaceGroupMatch.index).trim();
+  }
+  
+  return title;
 };
 
 export const generateWordDocument = (sections: ResearchSection[], title: string): Document => {
   const documentTitle = extractDocumentTitle(title);
+  const currentDate = new Date().toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
   
   // Create title page
   const children = [
@@ -143,6 +159,26 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
       spacing: {
         after: 400,
         before: 400
+      }
+    }),
+    new Paragraph({
+      text: "By Robert Maver",
+      alignment: AlignmentType.CENTER,
+      spacing: {
+        after: 400
+      }
+    }),
+    new Paragraph({
+      text: "",
+      spacing: {
+        after: 400
+      }
+    }),
+    new Paragraph({
+      text: currentDate,
+      alignment: AlignmentType.CENTER,
+      spacing: {
+        after: 400
       }
     }),
     // Add page break after title
@@ -158,48 +194,22 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
       spacing: {
         after: 400
       }
-    })
-  ];
-
-  // Add TOC entries
-  sections.forEach((section, sectionIndex) => {
-    // Add section entry with number
-    children.push(
-      new Paragraph({
-        text: `${sectionIndex + 1}. ${section.title}`,
-        style: "TOC1",
-        spacing: { after: 200 }
-      })
-    );
-    
-    if (section.subsections) {
-      section.subsections.forEach((subsection, subsectionIndex) => {
-        children.push(
-          new Paragraph({
-            text: `${sectionIndex + 1}.${subsectionIndex + 1}. ${subsection.title}`,
-            style: "TOC2",
-            spacing: { after: 200 }
-          })
-        );
-      });
-    }
-  });
-
-  // Add page break after TOC
-  children.push(
+    }),
+    // Add actual TOC field
+    new TableOfContents("Table of Contents", {
+      hyperlink: true,
+      headingStyleRange: "1-2"
+    }),
+    // Add page break after TOC
     new Paragraph({
       text: '',
       pageBreakBefore: true
     })
-  );
+  ];
 
-  // Add sections content
+  // Add sections content (with proper headings for TOC)
   sections.forEach((section) => {
     children.push(
-      new Paragraph({
-        text: "",
-        spacing: { before: 400 }
-      }),
       new Paragraph({
         text: section.title,
         heading: HeadingLevel.HEADING_1,
@@ -217,7 +227,7 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
           new Paragraph({
             text: subsection.title,
             heading: HeadingLevel.HEADING_2,
-            spacing: { before: 300, after: 200 }
+            spacing: { after: 200 }
           }),
           new Paragraph({
             text: subsection.content,
@@ -289,13 +299,40 @@ export const generatePdfDocument = async (
     let page = pdfDoc.addPage();
     const normalSize = 12;
     
-    // Extract and add title
+    // Extract and format title
     const documentTitle = extractDocumentTitle(metadata.title);
+    const currentDate = new Date().toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    
+    // Add title page
+    const titleWidth = boldFont.widthOfTextAtSize(documentTitle, 24);
     page.drawText(documentTitle, {
-      x: 50,
+      x: (page.getWidth() - titleWidth) / 2,
       y: page.getHeight() - 150,
       size: 24,
       font: boldFont
+    });
+
+    // Add author
+    const authorText = "By Robert Maver";
+    const authorWidth = font.widthOfTextAtSize(authorText, normalSize);
+    page.drawText(authorText, {
+      x: (page.getWidth() - authorWidth) / 2,
+      y: page.getHeight() - 200,
+      size: normalSize,
+      font: font
+    });
+
+    // Add date
+    const dateWidth = font.widthOfTextAtSize(currentDate, normalSize);
+    page.drawText(currentDate, {
+      x: (page.getWidth() - dateWidth) / 2,
+      y: page.getHeight() - 250,
+      size: normalSize,
+      font: font
     });
 
     // Add Table of Contents page
@@ -313,40 +350,66 @@ export const generatePdfDocument = async (
     });
     tocY -= 80;
 
-    // Add TOC entries
-    let sectionNumber = 1;
-    for (const section of sections) {
-      // Add section entry with number
-      tocPage.drawText(`${sectionNumber}. ${section.title}`, {
+    // Track current page number for TOC
+    let currentPage = 3; // Start after title and TOC pages
+
+    // Add TOC entries with page numbers
+    sections.forEach((section, index) => {
+      const sectionText = `${index + 1}. ${section.title}`;
+      const pageText = `${currentPage}`;
+      
+      tocPage.drawText(sectionText, {
         x: 50,
         y: tocY,
         size: 14,
         font: boldFont
       });
+      
+      tocPage.drawText(pageText, {
+        x: tocPage.getWidth() - 50 - font.widthOfTextAtSize(pageText, 14),
+        y: tocY,
+        size: 14,
+        font: font
+      });
+      
       tocY -= 40;
+      currentPage++;
 
       if (section.subsections) {
-        let subsectionNumber = 1;
-        for (const subsection of section.subsections) {
-          // Add subsection entry with hierarchical number
-          tocPage.drawText(`${sectionNumber}.${subsectionNumber}. ${subsection.title}`, {
+        section.subsections.forEach((subsection, subsectionIndex) => {
+          if (tocY < 50) {
+            tocPage = pdfDoc.addPage();
+            tocY = tocPage.getHeight() - 50;
+          }
+
+          const subsectionText = `    ${index + 1}.${subsectionIndex + 1}. ${subsection.title}`;
+          const subPageText = `${currentPage}`;
+          
+          tocPage.drawText(subsectionText, {
             x: 70,
             y: tocY,
             size: 12,
             font: font
           });
+          
+          tocPage.drawText(subPageText, {
+            x: tocPage.getWidth() - 50 - font.widthOfTextAtSize(subPageText, 12),
+            y: tocY,
+            size: 12,
+            font: font
+          });
+          
           tocY -= 40;
-          subsectionNumber++;
-
-          // Add new page if needed
-          if (tocY < 50) {
-            tocPage = pdfDoc.addPage();
-            tocY = tocPage.getHeight() - 50;
-          }
-        }
+          currentPage++;
+        });
       }
-      sectionNumber++;
-    }
+
+      // Add new page if needed
+      if (tocY < 50) {
+        tocPage = pdfDoc.addPage();
+        tocY = tocPage.getHeight() - 50;
+      }
+    });
 
     // Start content on new page
     page = pdfDoc.addPage();
