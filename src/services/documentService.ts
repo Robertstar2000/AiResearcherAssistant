@@ -106,10 +106,38 @@ const wrapText = (text: string, font: any, fontSize: number, maxWidth: number): 
   return lines;
 };
 
+// Extract document title from research target
+const extractDocumentTitle = (researchTarget: string): string => {
+  const titleStart = researchTarget.indexOf("Title: ");
+  if (titleStart === -1) {
+    return researchTarget; // Return full text if start marker not found
+  }
+  
+  const startIndex = titleStart + 7;
+  const asteriskEnd = researchTarget.indexOf("**", startIndex);
+  const newlineEnd = researchTarget.indexOf("\n", startIndex);
+  
+  let titleEnd;
+  if (asteriskEnd === -1 && newlineEnd === -1) {
+    return researchTarget.substring(startIndex).trim();
+  } else if (asteriskEnd === -1) {
+    titleEnd = newlineEnd;
+  } else if (newlineEnd === -1) {
+    titleEnd = asteriskEnd;
+  } else {
+    titleEnd = Math.min(asteriskEnd, newlineEnd);
+  }
+  
+  return researchTarget.substring(startIndex, titleEnd).trim();
+};
+
 export const generateWordDocument = (sections: ResearchSection[], title: string): Document => {
+  const documentTitle = extractDocumentTitle(title);
+  
+  // Create title page
   const children = [
     new Paragraph({
-      text: title,
+      text: documentTitle,
       heading: HeadingLevel.TITLE,
       alignment: AlignmentType.CENTER,
       spacing: {
@@ -117,35 +145,40 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
         before: 400
       }
     }),
+    // Add page break after title
     new Paragraph({
       text: '',
-      spacing: { before: 0, after: 0 },
-      thematicBreak: true
+      pageBreakBefore: true
     }),
+    // Add Table of Contents title
     new Paragraph({
       text: "Table of Contents",
       heading: HeadingLevel.HEADING_1,
+      alignment: AlignmentType.CENTER,
       spacing: {
-        after: 300
+        after: 400
       }
     })
   ];
 
   // Add TOC entries
-  sections.forEach((section) => {
+  sections.forEach((section, sectionIndex) => {
+    // Add section entry with number
     children.push(
       new Paragraph({
-        text: section.title,
-        style: "TOC1"
+        text: `${sectionIndex + 1}. ${section.title}`,
+        style: "TOC1",
+        spacing: { after: 200 }
       })
     );
     
     if (section.subsections) {
-      section.subsections.forEach((subsection) => {
+      section.subsections.forEach((subsection, subsectionIndex) => {
         children.push(
           new Paragraph({
-            text: `    ${subsection.title}`,
-            style: "TOC2"
+            text: `${sectionIndex + 1}.${subsectionIndex + 1}. ${subsection.title}`,
+            style: "TOC2",
+            spacing: { after: 200 }
           })
         );
       });
@@ -156,8 +189,7 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
   children.push(
     new Paragraph({
       text: '',
-      spacing: { before: 0, after: 0 },
-      thematicBreak: true
+      pageBreakBefore: true
     })
   );
 
@@ -197,10 +229,49 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
   });
 
   return new Document({
+    styles: {
+      default: {
+        heading1: {
+          run: {
+            size: 36,
+            bold: true,
+          },
+          paragraph: {
+            spacing: { after: 300 }
+          }
+        }
+      },
+      paragraphStyles: [
+        {
+          id: "TOC1",
+          name: "TOC 1",
+          basedOn: "Normal",
+          next: "Normal",
+          run: {
+            size: 28
+          },
+          paragraph: {
+            spacing: { after: 100 }
+          }
+        },
+        {
+          id: "TOC2",
+          name: "TOC 2",
+          basedOn: "Normal",
+          next: "Normal",
+          run: {
+            size: 26
+          },
+          paragraph: {
+            spacing: { after: 100 },
+            indent: { left: 720 }
+          }
+        }
+      ]
+    },
     sections: [{
-      properties: {},
       children: children
-    }],
+    }]
   });
 };
 
@@ -211,98 +282,168 @@ export const generatePdfDocument = async (
 ): Promise<Blob> => {
   try {
     const pdfDoc = await PDFDocument.create();
-    const font = await pdfDoc.embedFont(StandardFonts.TimesRoman);
-    const boldFont = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
-
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    
     // Create pages and add content
     let page = pdfDoc.addPage();
-    const { width, height } = page.getSize();
     const normalSize = 12;
-    const titleSize = 24;
     
-    // Add title
-    const titleWidth = boldFont.widthOfTextAtSize(metadata.title, titleSize);
-    page.drawText(metadata.title, {
-      x: (width - titleWidth) / 2,
-      y: height - 150,
-      font: boldFont,
-      size: titleSize
+    // Extract and add title
+    const documentTitle = extractDocumentTitle(metadata.title);
+    page.drawText(documentTitle, {
+      x: 50,
+      y: page.getHeight() - 150,
+      size: 24,
+      font: boldFont
     });
 
-    // Add sections
-    let yPosition = height - 200;
+    // Add Table of Contents page
+    let tocPage = pdfDoc.addPage();
+    let tocY = tocPage.getHeight() - 100;
+  
+    // Add TOC header centered
+    const tocTitle = "Table of Contents";
+    const tocTitleWidth = boldFont.widthOfTextAtSize(tocTitle, 24);
+    tocPage.drawText(tocTitle, {
+      x: (tocPage.getWidth() - tocTitleWidth) / 2,
+      y: tocY,
+      size: 24,
+      font: boldFont
+    });
+    tocY -= 80;
+
+    // Add TOC entries
+    let sectionNumber = 1;
     for (const section of sections) {
-      if (yPosition < 50) {
+      // Add section entry with number
+      tocPage.drawText(`${sectionNumber}. ${section.title}`, {
+        x: 50,
+        y: tocY,
+        size: 14,
+        font: boldFont
+      });
+      tocY -= 40;
+
+      if (section.subsections) {
+        let subsectionNumber = 1;
+        for (const subsection of section.subsections) {
+          // Add subsection entry with hierarchical number
+          tocPage.drawText(`${sectionNumber}.${subsectionNumber}. ${subsection.title}`, {
+            x: 70,
+            y: tocY,
+            size: 12,
+            font: font
+          });
+          tocY -= 40;
+          subsectionNumber++;
+
+          // Add new page if needed
+          if (tocY < 50) {
+            tocPage = pdfDoc.addPage();
+            tocY = tocPage.getHeight() - 50;
+          }
+        }
+      }
+      sectionNumber++;
+    }
+
+    // Start content on new page
+    page = pdfDoc.addPage();
+
+    // Add content pages
+    for (const section of sections) {
+      if (page.getY() < 50) {
         page = pdfDoc.addPage();
-        yPosition = height - 50;
       }
 
       // Add section title
       const sectionTitle = `${section.number}. ${section.title}`;
       page.drawText(sectionTitle, {
         x: 50,
-        y: yPosition,
+        y: page.getHeight() - 150,
         font: boldFont,
         size: 16
       });
 
-      yPosition -= 30;
-
       // Add section content
       if (section.content) {
-        const lines = wrapText(section.content, font, normalSize, width - 100);
+        const lines = wrapText(section.content, font, normalSize, page.getWidth() - 100);
         for (const line of lines) {
-          if (yPosition < 50) {
+          if (page.getY() < 50) {
             page = pdfDoc.addPage();
-            yPosition = height - 50;
           }
 
           page.drawText(line, {
             x: 50,
-            y: yPosition,
+            y: page.getY() - 20,
             font: font,
             size: normalSize
           });
-
-          yPosition -= 20;
         }
       }
 
-      yPosition -= 20;
+      // Add subsections
+      if (section.subsections) {
+        for (const subsection of section.subsections) {
+          if (page.getY() < 50) {
+            page = pdfDoc.addPage();
+          }
+
+          // Add subsection title
+          page.drawText(subsection.title, {
+            x: 50,
+            y: page.getY() - 20,
+            font: boldFont,
+            size: 14
+          });
+
+          // Add subsection content
+          if (subsection.content) {
+            const lines = wrapText(subsection.content, font, normalSize, page.getWidth() - 100);
+            for (const line of lines) {
+              if (page.getY() < 50) {
+                page = pdfDoc.addPage();
+              }
+
+              page.drawText(line, {
+                x: 50,
+                y: page.getY() - 20,
+                font: font,
+                size: normalSize
+              });
+            }
+          }
+        }
+      }
     }
 
     // Add references if any
     if (references.length > 0) {
-      if (yPosition < 100) {
+      if (page.getY() < 100) {
         page = pdfDoc.addPage();
-        yPosition = height - 50;
       }
 
       page.drawText('References', {
         x: 50,
-        y: yPosition,
+        y: page.getY() - 20,
         font: boldFont,
         size: 16
       });
 
-      yPosition -= 30;
-
       for (const ref of references) {
-        const lines = wrapText(ref, font, normalSize, width - 100);
+        const lines = wrapText(ref, font, normalSize, page.getWidth() - 100);
         for (const line of lines) {
-          if (yPosition < 50) {
+          if (page.getY() < 50) {
             page = pdfDoc.addPage();
-            yPosition = height - 50;
           }
 
           page.drawText(line, {
             x: 50,
-            y: yPosition,
+            y: page.getY() - 20,
             font: font,
             size: normalSize
           });
-
-          yPosition -= 20;
         }
       }
     }

@@ -201,7 +201,7 @@ export class ResearchApiService {
           },
           {
             role: "user",
-            content: `Generate one and only one sentence as an academic title using ${validatedConfig.mode} ${validatedConfig.type} research on: ${validatedConfig.topic} to describe what the research is about. Do not include an introduction, conclusion, or literature search. The title should be clear, concise, and focused on the topic ${validatedConfig.topic} to describe what the research is about`
+            content: `Generate one and only one sentence with a period as an academic title using ${validatedConfig.mode} ${validatedConfig.type} research on: ${validatedConfig.topic} to describe what the research is about. Do not include an introduction, conclusion, or literature search. The title should be clear, concise, and focused on the topic ${validatedConfig.topic} to describe what the research is about. the Title MUST be one sentance and end with a period. You SHALL place no content before or after the tile sentance`
           }
         ],
         temperature: 0.7,
