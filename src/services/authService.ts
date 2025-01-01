@@ -106,7 +106,7 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
     const { data: existingUser } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .select('*')
-      .eq('User-Name', credentials.email)
+      .eq('username', credentials.email)
       .single();
 
     if (existingUser) {
@@ -149,11 +149,11 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
       .from('AiResearcherAssistant')
       .insert({
         id: newId,
-        "User-Name": credentials.email,
-        "PassWord": credentials.password,
-        "Occupation": credentials.metadata?.occupation || '',
-        "Location": credentials.metadata?.geolocation || '',
-        auth_id: authData.user.id,  // Store Supabase Auth ID for reference
+        username: credentials.email,
+        password: credentials.password,
+        occupation: credentials.metadata?.occupation || '',
+        location: credentials.metadata?.geolocation || '',
+        auth_id: authData.user.id,
         created_at: new Date().toISOString()
       })
       .select()
@@ -171,10 +171,10 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
     // Return the created user
     return {
       id: profile.id.toString(),
-      email: profile["User-Name"],
-      name: credentials.metadata?.name || profile["User-Name"],
-      occupation: profile["Occupation"] || '',
-      geolocation: profile["Location"] || ''
+      email: profile.username,
+      name: credentials.metadata?.name || profile.username,
+      occupation: profile.occupation || '',
+      geolocation: profile.location || ''
     };
   } catch (err) {
     console.error('User creation error:', err);
@@ -209,7 +209,7 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .select('*')
-      .eq('User-Name', credentials.email)
+      .eq('username', credentials.email)
       .single();
 
     if (profileError || !profile) {
@@ -224,10 +224,10 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
     // Return user data
     return {
       id: profile.id.toString(),
-      email: profile["User-Name"],
-      name: profile["User-Name"],
-      occupation: profile["Occupation"] || '',
-      geolocation: profile["Location"] || ''
+      email: profile.username,
+      name: profile.username,
+      occupation: profile.occupation || '',
+      geolocation: profile.location || ''
     };
   } catch (err) {
     console.error('Login error:', err);
