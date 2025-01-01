@@ -1,7 +1,6 @@
 import { researchApi } from './api';
 import { store } from '../store';
-import { setUser, logout } from '../store/slices/authSlice';
-import { Session, AuthChangeEvent, User as SupabaseUser } from '@supabase/supabase-js';
+import { logout } from '../store/slices/authSlice';
 import { ResearchError, ResearchException } from './researchErrors';
 
 interface UserMetadata {
@@ -24,85 +23,9 @@ interface AuthCredentials {
   metadata?: UserMetadata;
 }
 
-const createAuthUser = (user: SupabaseUser, metadata: UserMetadata): AuthUser => ({
-  id: user.id.toString(),
-  email: user.email || '',
-  name: metadata.name || '',
-  occupation: metadata.occupation || '',
-  geolocation: metadata.geolocation || '',
-});
-
-// Initialize session persistence
-export const initializeAuth = async (callback?: () => void): Promise<() => void> => {
-  try {
-    // Get session from storage
-    const { data: { session }, error: sessionError } = await researchApi.supabase.auth.getSession();
-    console.log('Session check result:', session ? 'Session found' : 'No session found');
-    
-    if (sessionError) {
-      console.error('Session error:', sessionError);
-      throw new ResearchException(ResearchError.AUTH_ERROR, 'Failed to get session');
-    }
-
-    // Set initial user state
-    if (session?.user) {
-      console.log('Restoring user session for:', session.user.email);
-      const metadata: UserMetadata = {
-        name: session.user.user_metadata.name,
-        occupation: session.user.user_metadata.occupation,
-        geolocation: session.user.user_metadata.geolocation
-      };
-      store.dispatch(setUser(createAuthUser(session.user, metadata)));
-    }
-
-    // Set up auth state listener
-    const { data: { subscription } } = researchApi.supabase.auth.onAuthStateChange(
-      async (event: AuthChangeEvent, session: Session | null) => {
-        try {
-          console.log('Auth state changed:', event, session ? 'Session exists' : 'No session');
-          if (event === 'SIGNED_IN' && session?.user) {
-            const metadata: UserMetadata = {
-              name: session.user.user_metadata.name,
-              occupation: session.user.user_metadata.occupation,
-              geolocation: session.user.user_metadata.geolocation
-            };
-            store.dispatch(setUser(createAuthUser(session.user, metadata)));
-            console.log('User signed in:', session.user.email);
-          } else if (event === 'SIGNED_OUT') {
-            store.dispatch(logout());
-            console.log('User signed out');
-          }
-        } catch (error) {
-          console.error('Error handling auth state change:', error);
-        }
-      }
-    );
-
-    // Call the callback function
-    if (callback) {
-      callback();
-    }
-
-    console.log('Auth initialization completed');
-    
-    // Return cleanup function
-    return () => {
-      console.log('Cleaning up auth subscription');
-      subscription.unsubscribe();
-    };
-  } catch (error) {
-    console.error('Auth initialization error:', error);
-    throw new ResearchException(
-      ResearchError.AUTH_ERROR,
-      error instanceof Error ? error.message : 'Failed to initialize auth',
-      { error }
-    );
-  }
-};
-
 export async function createUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
-    // Create profile directly in the database without any auth
+    // Create profile directly in the database
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .insert({
@@ -155,10 +78,10 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
 
 export async function authenticateUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
-    // Just check if the profile exists
+    // Check if profile exists by email
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
-      .select('*')
+      .select()
       .eq('Email', credentials.email)
       .single();
 
@@ -190,7 +113,7 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
   }
 }
 
-// Handle sign out - just clear the local state
+// Just clear local state
 export const signOut = async (): Promise<void> => {
   try {
     store.dispatch(logout());

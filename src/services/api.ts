@@ -128,9 +128,9 @@ export class ResearchApiConfig {
 
     this.supabase = createClient(supabaseUrl, supabaseKey, {
       auth: {
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: true
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false
       }
     });
 
