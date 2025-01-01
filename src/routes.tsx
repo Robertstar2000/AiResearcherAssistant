@@ -9,10 +9,10 @@ const AppRoutes = () => {
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Routes>
-        <Route element={<Layout />}>
+        <Route path="/" element={<Layout />}>
           <Route index element={<LandingPage />} />
-          <Route path="auth" element={<AuthPage />} />
-          <Route path="research" element={<ResearchPage />} />
+          <Route path="/auth" element={<AuthPage />} />
+          <Route path="/research" element={<ResearchPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
