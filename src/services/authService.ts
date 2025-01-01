@@ -102,21 +102,7 @@ export const initializeAuth = async (callback?: () => void): Promise<() => void>
 
 export async function createUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
-    // Check if user already exists in custom table
-    const { data: existingUser } = await researchApi.supabase
-      .from('AiResearcherAssistant')
-      .select('*')
-      .eq('username', credentials.email)
-      .single();
-
-    if (existingUser) {
-      throw new ResearchException(
-        ResearchError.AUTH_ERROR,
-        'User with this email already exists'
-      );
-    }
-
-    // Create user in Supabase Auth
+    // Create user in Supabase Auth first
     const { data: authData, error: authError } = await researchApi.supabase.auth.signUp({
       email: credentials.email,
       password: credentials.password,
@@ -134,6 +120,17 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
       );
     }
 
+    // Wait for session to be established
+    const { data: { session }, error: sessionError } = await researchApi.supabase.auth.getSession();
+    
+    if (sessionError || !session) {
+      throw new ResearchException(
+        ResearchError.AUTH_ERROR,
+        'Failed to establish session after signup',
+        { error: sessionError }
+      );
+    }
+
     // Get the current max ID to generate a new one
     const { data: maxIdResult } = await researchApi.supabase
       .from('AiResearcherAssistant')
@@ -144,10 +141,10 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
 
     const newId = maxIdResult ? maxIdResult.id + 1 : 1;
 
-    // Insert user data into custom table
+    // Insert user data into custom table using the established session
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
-      .insert({
+      .insert([{
         id: newId,
         username: credentials.email,
         password: credentials.password,
@@ -155,7 +152,7 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
         location: credentials.metadata?.geolocation || '',
         auth_id: authData.user.id,
         created_at: new Date().toISOString()
-      })
+      }])
       .select()
       .single();
 
