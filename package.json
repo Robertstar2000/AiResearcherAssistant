@@ -27,6 +27,7 @@
     "html-to-pdfmake": "^2.4.25",
     "jspdf": "^2.5.1",
     "pdf-lib": "^1.17.1",
+    "pdf-parse": "^1.1.1",
     "pdfmake": "^0.2.16",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
