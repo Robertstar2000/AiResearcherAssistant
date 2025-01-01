@@ -121,7 +121,8 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
       email: credentials.email,
       password: credentials.password,
       options: {
-        data: credentials.metadata
+        data: credentials.metadata,
+        emailRedirectTo: 'https://airesearcherassistant.netlify.app/research'
       }
     });
 
