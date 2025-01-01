@@ -102,26 +102,33 @@ export const initializeAuth = async (callback?: () => void): Promise<() => void>
 
 export async function createUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
-    // Create profile directly without auth
+    // Create profile directly in the database without any auth
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .insert({
         Display_name: credentials.metadata?.name || credentials.email,
         Email: credentials.email,
-        Phone: '',  // Optional
-        Providers: 'email',
-        Provider_type: 'local',
+        Phone: '',
+        Providers: 'local',
+        Provider_type: 'email',
         Created_at: new Date().toISOString()
       })
       .select()
       .single();
 
-    if (profileError || !profile) {
+    if (profileError) {
       console.error('Profile creation error:', profileError);
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
         'Failed to create user profile',
         { error: profileError }
+      );
+    }
+
+    if (!profile) {
+      throw new ResearchException(
+        ResearchError.AUTH_ERROR,
+        'No profile data returned after creation'
       );
     }
 
@@ -148,7 +155,7 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
 
 export async function authenticateUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
-    // Get user profile from custom table
+    // Just check if the profile exists
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .select('*')
@@ -156,21 +163,19 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
       .single();
 
     if (profileError || !profile) {
-      console.error('Profile fetch error:', profileError);
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
-        'User profile not found',
+        'User not found',
         { error: profileError }
       );
     }
 
-    // Return user data
     return {
       id: profile.UID.toString(),
       email: profile.Email,
       name: profile.Display_name,
-      occupation: profile.Occupation || '',
-      geolocation: profile.Location || ''
+      occupation: '',
+      geolocation: ''
     };
   } catch (err) {
     console.error('Login error:', err);
@@ -179,22 +184,18 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
     }
     throw new ResearchException(
       ResearchError.AUTH_ERROR,
-      'Invalid email or password',
+      err instanceof Error ? err.message : 'Failed to authenticate',
       { error: err }
     );
   }
 }
 
-// Handle sign out
+// Handle sign out - just clear the local state
 export const signOut = async (): Promise<void> => {
   try {
     store.dispatch(logout());
   } catch (error) {
     console.error('Sign out error:', error);
-    throw new ResearchException(
-      ResearchError.AUTH_ERROR,
-      'Failed to sign out',
-      { originalError: error }
-    );
+    throw error;
   }
-}
+};
