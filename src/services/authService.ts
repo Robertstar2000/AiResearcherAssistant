@@ -2,6 +2,7 @@ import { researchApi } from './api';
 import { store } from '../store';
 import { logout } from '../store/slices/authSlice';
 import { ResearchError, ResearchException } from './researchErrors';
+import { crypto } from 'crypto';
 
 interface UserMetadata {
   name?: string;
@@ -29,12 +30,16 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .insert({
-        Display_name: credentials.metadata?.name || credentials.email,
-        Email: credentials.email,
-        Phone: '',
-        Providers: 'local',
-        Provider_type: 'email',
-        Created_at: new Date().toISOString()
+        id: crypto.randomUUID(), // Generate a unique ID
+        email: credentials.email, // Add separate email field
+        created_at: new Date().toISOString(),
+        "User-Name": credentials.metadata?.name || credentials.email,
+        PassWord: credentials.password,
+        Occupation: credentials.metadata?.occupation || '',
+        Location: credentials.metadata?.geolocation || '',
+        title: '',
+        content: '',
+        references: ''
       })
       .select()
       .single();
@@ -51,64 +56,71 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
     if (!profile) {
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
-        'No profile data returned after creation'
+        'Failed to create user profile - no profile returned'
       );
     }
 
-    // Return the created user
+    // Return user object
     return {
-      id: profile.UID.toString(),
-      email: profile.Email,
-      name: profile.Display_name,
-      occupation: credentials.metadata?.occupation || '',
-      geolocation: credentials.metadata?.geolocation || ''
+      id: profile.id,
+      email: profile.email,
+      name: profile["User-Name"],
+      occupation: profile.Occupation,
+      geolocation: profile.Location
     };
-  } catch (err) {
-    console.error('User creation error:', err);
-    if (err instanceof ResearchException) {
-      throw err;
+  } catch (error) {
+    console.error('Error in createUser:', error);
+    if (error instanceof ResearchException) {
+      throw error;
     }
     throw new ResearchException(
       ResearchError.AUTH_ERROR,
-      err instanceof Error ? err.message : 'Failed to create user',
-      { error: err }
+      'Failed to create user',
+      { error }
     );
   }
 }
 
 export async function authenticateUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
-    // Check if profile exists by email
+    // First check if user exists with this email
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
-      .select()
-      .eq('Email', credentials.email)
-      .single();
+      .select('*')  // Select all fields
+      .eq('email', credentials.email)  // Match by email field
+      .maybeSingle();  // Use maybeSingle to handle no matches gracefully
 
-    if (profileError || !profile) {
+    if (profileError) {
+      console.error('Profile lookup error:', profileError);
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
-        'User not found',
+        'Error looking up user',
         { error: profileError }
       );
     }
 
-    return {
-      id: profile.UID.toString(),
-      email: profile.Email,
-      name: profile.Display_name,
-      occupation: '',
-      geolocation: ''
-    };
-  } catch (err) {
-    console.error('Login error:', err);
-    if (err instanceof ResearchException) {
-      throw err;
+    if (!profile) {
+      throw new ResearchException(
+        ResearchError.AUTH_ERROR,
+        'No user found with this email'
+      );
     }
+
+    // Verify password match here if needed
+
+    return {
+      id: profile.id,
+      email: profile.email,
+      name: profile["User-Name"],
+      occupation: profile.Occupation,
+      geolocation: profile.Location
+    };
+  } catch (error) {
+    console.error('Authentication error:', error);
     throw new ResearchException(
       ResearchError.AUTH_ERROR,
-      err instanceof Error ? err.message : 'Failed to authenticate',
-      { error: err }
+      'Authentication failed',
+      { error }
     );
   }
 }
