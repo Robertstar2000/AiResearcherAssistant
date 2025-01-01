@@ -102,13 +102,12 @@ export const initializeAuth = async (callback?: () => void): Promise<() => void>
 
 export async function createUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
-    // Create user in Supabase Auth first
+    // Create auth entry without email verification
     const { data: authData, error: authError } = await researchApi.supabase.auth.signUp({
       email: credentials.email,
       password: credentials.password,
       options: {
-        data: credentials.metadata,
-        emailRedirectTo: 'https://airesearcherassistant.netlify.app/research'
+        data: credentials.metadata
       }
     });
 
@@ -120,39 +119,16 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
       );
     }
 
-    // Wait for session to be established
-    const { data: { session }, error: sessionError } = await researchApi.supabase.auth.getSession();
-    
-    if (sessionError || !session) {
-      throw new ResearchException(
-        ResearchError.AUTH_ERROR,
-        'Failed to establish session after signup',
-        { error: sessionError }
-      );
-    }
-
-    // Get the current max ID to generate a new one
-    const { data: maxIdResult } = await researchApi.supabase
-      .from('AiResearcherAssistant')
-      .select('id')
-      .order('id', { ascending: false })
-      .limit(1)
-      .single();
-
-    const newId = maxIdResult ? maxIdResult.id + 1 : 1;
-
-    // Insert user data into custom table using the established session
+    // Insert user data into custom table - simplified approach
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
-      .insert([{
-        id: newId,
-        username: credentials.email,
-        password: credentials.password,
-        occupation: credentials.metadata?.occupation || '',
-        location: credentials.metadata?.geolocation || '',
-        auth_id: authData.user.id,
-        created_at: new Date().toISOString()
-      }])
+      .insert({
+        "User-Name": credentials.email,
+        "PassWord": credentials.password,
+        "Occupation": credentials.metadata?.occupation || '',
+        "Location": credentials.metadata?.geolocation || '',
+        "auth_id": authData.user.id
+      })
       .select()
       .single();
 
@@ -168,10 +144,10 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
     // Return the created user
     return {
       id: profile.id.toString(),
-      email: profile.username,
-      name: credentials.metadata?.name || profile.username,
-      occupation: profile.occupation || '',
-      geolocation: profile.location || ''
+      email: profile["User-Name"],
+      name: credentials.metadata?.name || profile["User-Name"],
+      occupation: profile["Occupation"] || '',
+      geolocation: profile["Location"] || ''
     };
   } catch (err) {
     console.error('User creation error:', err);
