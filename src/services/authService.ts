@@ -102,31 +102,16 @@ export const initializeAuth = async (callback?: () => void): Promise<() => void>
 
 export async function createUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
-    // Create auth entry without email verification
-    const { data: authData, error: authError } = await researchApi.supabase.auth.signUp({
-      email: credentials.email,
-      password: credentials.password,
-      options: {
-        data: credentials.metadata
-      }
-    });
-
-    if (authError || !authData.user) {
-      throw new ResearchException(
-        ResearchError.AUTH_ERROR,
-        `Failed to create auth user: ${authError?.message || 'No user data returned'}`,
-        { error: authError }
-      );
-    }
-
-    // Insert user data into custom table with minimal required fields
+    // Create profile directly without auth
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .insert({
-        "User-Name": credentials.email,
-        "PassWord": credentials.password,
-        "Occupation": credentials.metadata?.occupation || '',
-        "Location": credentials.metadata?.geolocation || ''
+        Display_name: credentials.metadata?.name || credentials.email,
+        Email: credentials.email,
+        Phone: '',  // Optional
+        Providers: 'email',
+        Provider_type: 'local',
+        Created_at: new Date().toISOString()
       })
       .select()
       .single();
@@ -142,11 +127,11 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
 
     // Return the created user
     return {
-      id: profile.id.toString(),
-      email: profile["User-Name"],
-      name: credentials.metadata?.name || profile["User-Name"],
-      occupation: profile["Occupation"] || '',
-      geolocation: profile["Location"] || ''
+      id: profile.UID.toString(),
+      email: profile.Email,
+      name: profile.Display_name,
+      occupation: credentials.metadata?.occupation || '',
+      geolocation: credentials.metadata?.geolocation || ''
     };
   } catch (err) {
     console.error('User creation error:', err);
@@ -163,25 +148,11 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
 
 export async function authenticateUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
-    // First authenticate with Supabase Auth
-    const { data: authData, error: authError } = await researchApi.supabase.auth.signInWithPassword({
-      email: credentials.email,
-      password: credentials.password,
-    });
-
-    if (authError || !authData.user) {
-      throw new ResearchException(
-        ResearchError.AUTH_ERROR,
-        'Invalid email or password',
-        { error: authError }
-      );
-    }
-
     // Get user profile from custom table
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .select('*')
-      .eq('username', credentials.email)
+      .eq('Email', credentials.email)
       .single();
 
     if (profileError || !profile) {
@@ -195,11 +166,11 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
 
     // Return user data
     return {
-      id: profile.id.toString(),
-      email: profile.username,
-      name: profile.username,
-      occupation: profile.occupation || '',
-      geolocation: profile.location || ''
+      id: profile.UID.toString(),
+      email: profile.Email,
+      name: profile.Display_name,
+      occupation: profile.Occupation || '',
+      geolocation: profile.Location || ''
     };
   } catch (err) {
     console.error('Login error:', err);
@@ -217,8 +188,6 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
 // Handle sign out
 export const signOut = async (): Promise<void> => {
   try {
-    const { error } = await researchApi.supabase.auth.signOut();
-    if (error) throw error;
     store.dispatch(logout());
   } catch (error) {
     console.error('Sign out error:', error);
