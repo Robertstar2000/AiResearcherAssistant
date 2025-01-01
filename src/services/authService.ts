@@ -119,15 +119,14 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
       );
     }
 
-    // Insert user data into custom table - simplified approach
+    // Insert user data into custom table with minimal required fields
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .insert({
         "User-Name": credentials.email,
         "PassWord": credentials.password,
         "Occupation": credentials.metadata?.occupation || '',
-        "Location": credentials.metadata?.geolocation || '',
-        "auth_id": authData.user.id
+        "Location": credentials.metadata?.geolocation || ''
       })
       .select()
       .single();
