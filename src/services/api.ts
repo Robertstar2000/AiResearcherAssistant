@@ -126,14 +126,7 @@ export class ResearchApiConfig {
       );
     }
 
-    this.supabase = createClient(supabaseUrl, supabaseKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false
-      }
-    });
-
+    this.supabase = createClient(supabaseUrl, supabaseKey);
     this.groq = new Groq({ apiKey: groqApiKey, dangerouslyAllowBrowser: true });
   }
 
