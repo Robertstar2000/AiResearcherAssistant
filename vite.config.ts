@@ -31,6 +31,7 @@ export default defineConfig(({ mode }) => {
       sourcemap: true,
       minify: 'esbuild',
       rollupOptions: {
+        external: ['pdf-parse'],
         output: {
           manualChunks: {
             'react-vendor': ['react', 'react-dom', 'react-router-dom'],
