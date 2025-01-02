@@ -2,7 +2,6 @@ import { researchApi } from './api';
 import { store } from '../store';
 import { logout } from '../store/slices/authSlice';
 import { ResearchError, ResearchException } from './researchErrors';
-import { crypto } from 'crypto';
 
 interface UserMetadata {
   name?: string;
@@ -30,8 +29,8 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .insert({
-        id: crypto.randomUUID(), // Generate a unique ID
-        email: credentials.email, // Add separate email field
+        id: `user_${Date.now()}`,  // Simple timestamp-based ID
+        email: credentials.email,
         created_at: new Date().toISOString(),
         "User-Name": credentials.metadata?.name || credentials.email,
         PassWord: credentials.password,
