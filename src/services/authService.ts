@@ -29,10 +29,8 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .insert({
-        id: `user_${Date.now()}`,  // Simple timestamp-based ID
-        email: credentials.email,
-        created_at: new Date().toISOString(),
-        "User-Name": credentials.metadata?.name || credentials.email,
+        e_mail: credentials.email,
+        "User-Name": credentials.metadata?.name || '',
         PassWord: credentials.password,
         Occupation: credentials.metadata?.occupation || '',
         Location: credentials.metadata?.geolocation || '',
@@ -40,7 +38,7 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
         content: '',
         references: ''
       })
-      .select()
+      .select('*')
       .single();
 
     if (profileError) {
@@ -62,7 +60,7 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
     // Return user object
     return {
       id: profile.id,
-      email: profile.email,
+      email: profile.e_mail,
       name: profile["User-Name"],
       occupation: profile.Occupation,
       geolocation: profile.Location
@@ -82,40 +80,32 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
 
 export async function authenticateUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
-    // First check if user exists with this email
-    const { data: profile, error: profileError } = await researchApi.supabase
+    const { data: profile, error } = await researchApi.supabase
       .from('AiResearcherAssistant')
-      .select('*')  // Select all fields
-      .eq('email', credentials.email)  // Match by email field
-      .maybeSingle();  // Use maybeSingle to handle no matches gracefully
+      .select('*')
+      .ilike('e_mail', credentials.email)
+      .eq('PassWord', credentials.password)
+      .single();
 
-    if (profileError) {
-      console.error('Profile lookup error:', profileError);
+    if (error || !profile) {
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
-        'Error looking up user',
-        { error: profileError }
+        'Invalid email or password'
       );
     }
-
-    if (!profile) {
-      throw new ResearchException(
-        ResearchError.AUTH_ERROR,
-        'No user found with this email'
-      );
-    }
-
-    // Verify password match here if needed
 
     return {
       id: profile.id,
-      email: profile.email,
+      email: profile.e_mail,
       name: profile["User-Name"],
       occupation: profile.Occupation,
       geolocation: profile.Location
     };
   } catch (error) {
     console.error('Authentication error:', error);
+    if (error instanceof ResearchException) {
+      throw error;
+    }
     throw new ResearchException(
       ResearchError.AUTH_ERROR,
       'Authentication failed',

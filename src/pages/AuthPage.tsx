@@ -90,11 +90,14 @@ export default function AuthPage() {
     event.preventDefault()
     setError(null)
 
+    if (isLoading) return;
+
     try {
       if (!email || !password) {
         throw new Error('Please fill in all required fields')
       }
 
+      setIsLoading(true)
       const user = await authenticateUser({
         email,
         password
@@ -103,7 +106,9 @@ export default function AuthPage() {
       dispatch(setUser(user))
       navigate('/research')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to log in')
+      setError(err instanceof Error ? err.message : 'Invalid email or password')
+    } finally {
+      setIsLoading(false)
     }
   }
 
