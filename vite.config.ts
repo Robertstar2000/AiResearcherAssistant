@@ -12,6 +12,8 @@ export default defineConfig(({ mode }) => {
   console.log('VITE_SUPABASE_URL:', env.VITE_SUPABASE_URL ? 'exists' : 'missing')
   console.log('VITE_SUPABASE_KEY:', env.VITE_SUPABASE_KEY ? 'exists' : 'missing')
   console.log('VITE_GROQ_API_KEY:', env.VITE_GROQ_API_KEY ? 'exists' : 'missing')
+  console.log('VITE_GROQ_API_URL:', env.VITE_GROQ_API_URL ? 'exists' : 'missing')
+ 
 
   return {
     define: {
@@ -19,6 +21,7 @@ export default defineConfig(({ mode }) => {
         VITE_SUPABASE_URL: JSON.stringify(env.VITE_SUPABASE_URL),
         VITE_SUPABASE_KEY: JSON.stringify(env.VITE_SUPABASE_KEY),
         VITE_GROQ_API_KEY: JSON.stringify(env.VITE_GROQ_API_KEY),
+        VITE_GROQ_API_URL: JSON.stringify(env.VITE_GROQ_API_URL),
         PROD: isProd,
         DEV: !isProd,
         MODE: JSON.stringify(mode)
