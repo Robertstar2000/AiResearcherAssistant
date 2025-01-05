@@ -14,9 +14,8 @@ import {
   TextField,
   SelectChangeEvent,
 } from '@mui/material';
-import { Document, Paragraph, Packer, HeadingLevel, AlignmentType, TextRun } from 'docx';
-import { TDocumentDefinitions } from 'pdfmake/interfaces';
-import * as pdfMake from 'pdfmake/build/pdfmake';
+import { Packer } from 'docx';
+import pdfMake from 'pdfmake/build/pdfmake';
 import * as pdfFonts from 'pdfmake/build/vfs_fonts';
 import { saveAs } from 'file-saver';
 import { ResearchSection } from '../types/research';
@@ -31,201 +30,24 @@ import {
 } from '../store/slices/researchSlice';
 import { researchApi } from '../services/api';
 import { generateResearchContent } from '../services/researchService';
-import { convertToMarkdown, parseMarkdownToDocx } from '../services/documentService';
+import { convertToMarkdown, parseMarkdownToDocx, generateWordDocument, generatePdfDocument } from '../services/documentService';
 
 // Initialize pdfMake with fonts
-const pdfConfig = {
-  vfs: (pdfFonts as any).pdfMake?.vfs,
-  fonts: {
-    Roboto: {
-      normal: 'Roboto-Regular.ttf',
-      bold: 'Roboto-Medium.ttf',
-      italics: 'Roboto-Italic.ttf',
-      bolditalics: 'Roboto-MediumItalic.ttf'
-    }
-  }
-};
-
-// Apply configuration if VFS is available
-if (pdfConfig.vfs) {
-  Object.assign(pdfMake.vfs || {}, pdfConfig.vfs);
-  Object.assign(pdfMake.fonts || {}, pdfConfig.fonts);
-}
-
-interface ProgressState {
-  progress: number;
-  message: string;
+if ((pdfFonts as any).pdfMake?.vfs) {
+  (pdfMake as any).vfs = (pdfFonts as any).pdfMake.vfs;
 }
 
 export const ResearchPage: React.FC = () => {
   const dispatch = useDispatch();
   const research = useSelector((state: RootState) => state.research);
-  const [progressState, setProgressState] = useState<ProgressState>({
+  const user = useSelector((state: RootState) => state.auth.user);
+  const [progressState, setProgressState] = useState({
     progress: 0,
     message: '',
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [targetGenerated, setTargetGenerated] = useState(false);
   const [researchGenerated, setResearchGenerated] = useState(false);
-
-  const extractDocumentTitle = (target: string): string => {
-    // Skip everything until after the second **
-    const afterSecondMarker = target.split('**').slice(2).join('**').trim();
-    // Get the first complete sentence
-    const match = afterSecondMarker.match(/^[^.!?]+[.!?]/);
-    return match ? match[0].trim() : afterSecondMarker;
-  };
-
-  const parseMarkdownToPdfContent = (text: string) => {
-    const parts: Array<{ text: string; bold?: boolean; italic?: boolean; style?: string }> = [];
-    let currentText = '';
-    let i = 0;
-
-    while (i < text.length) {
-      if (text[i] === '*' || text[i] === '_' || text[i] === '#') {
-        if (currentText) {
-          parts.push({ text: currentText });
-          currentText = '';
-        }
-
-        // Headers
-        if (text[i] === '#') {
-          const headerMatch = text.slice(i).match(/^(#{1,6})\s+([^\n]+)/);
-          if (headerMatch) {
-            const level = headerMatch[1].length;
-            const headerText = headerMatch[2].trim();
-            parts.push({ 
-              text: headerText,
-              style: `header${level}`,
-              bold: true
-            });
-            i += headerMatch[0].length;
-            continue;
-          }
-        }
-
-        // Bold
-        if (text.slice(i, i + 2) === '**' || text.slice(i, i + 2) === '__') {
-          const endIndex = text.indexOf(text.slice(i, i + 2), i + 2);
-          if (endIndex !== -1) {
-            parts.push({ 
-              text: text.slice(i + 2, endIndex),
-              bold: true
-            });
-            i = endIndex + 2;
-            continue;
-          }
-        }
-
-        // Italic
-        if (text[i] === '*' || text[i] === '_') {
-          const endIndex = text.indexOf(text[i], i + 1);
-          if (endIndex !== -1) {
-            parts.push({ 
-              text: text.slice(i + 1, endIndex),
-              italic: true
-            });
-            i = endIndex + 1;
-            continue;
-          }
-        }
-      }
-
-      currentText += text[i];
-      i++;
-    }
-
-    if (currentText) {
-      parts.push({ text: currentText });
-    }
-
-    return parts;
-  };
-
-  const parseMarkdownToWordContent = (text: string): Paragraph[] => {
-    const paragraphs: Paragraph[] = [];
-    const lines = text.split('\n');
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-
-      // Headers
-      const headerMatch = line.match(/^(#{1,6})\s+(.+)/);
-      if (headerMatch) {
-        const level = headerMatch[1].length;
-        const headerText = headerMatch[2].trim();
-        paragraphs.push(
-          new Paragraph({
-            text: headerText,
-            heading: level === 1 ? HeadingLevel.HEADING_1 : 
-                    level === 2 ? HeadingLevel.HEADING_2 :
-                    level === 3 ? HeadingLevel.HEADING_3 : HeadingLevel.HEADING_4,
-            spacing: { before: 200, after: 100 }
-          })
-        );
-        continue;
-      }
-
-      // Regular paragraph with inline formatting
-      const textRuns: TextRun[] = [];
-      let currentText = '';
-      let j = 0;
-
-      while (j < line.length) {
-        if (line[j] === '*' || line[j] === '_') {
-          if (currentText) {
-            textRuns.push(new TextRun({ text: currentText }));
-            currentText = '';
-          }
-
-          // Bold
-          if (line.slice(j, j + 2) === '**' || line.slice(j, j + 2) === '__') {
-            const endIndex = line.indexOf(line.slice(j, j + 2), j + 2);
-            if (endIndex !== -1) {
-              textRuns.push(
-                new TextRun({
-                  text: line.slice(j + 2, endIndex),
-                  bold: true
-                })
-              );
-              j = endIndex + 2;
-              continue;
-            }
-          }
-
-          // Italic
-          const endIndex = line.indexOf(line[j], j + 1);
-          if (endIndex !== -1) {
-            textRuns.push(
-              new TextRun({
-                text: line.slice(j + 1, endIndex),
-                italics: true
-              })
-            );
-            j = endIndex + 1;
-            continue;
-          }
-        }
-
-        currentText += line[j];
-        j++;
-      }
-
-      if (currentText) {
-        textRuns.push(new TextRun({ text: currentText }));
-      }
-
-      paragraphs.push(
-        new Paragraph({
-          children: textRuns,
-          spacing: { before: 100, after: 100 }
-        })
-      );
-    }
-
-    return paragraphs;
-  };
 
   const handleDocumentGeneration = async () => {
     if (!research.researchTarget) {
@@ -515,10 +337,11 @@ export const ResearchPage: React.FC = () => {
         message: 'Generating research target...',
       });
 
-      const target = await researchApi.generateTarget(
+      const target = await researchApi.generateTitle(
         research.researchTarget,
         research.mode,
-        research.type
+        research.type,
+        user?.id
       );
 
       dispatch(setResearchTarget(target));
@@ -536,107 +359,6 @@ export const ResearchPage: React.FC = () => {
     }
   };
 
-  const handleDownloadPdf = async () => {
-    try {
-      if (!research.sections || research.sections.length === 0) {
-        dispatch(setError('No content available to generate PDF'));
-        return;
-      }
-
-      const documentTitle = extractDocumentTitle(research.researchTarget || '');
-      const docDefinition: TDocumentDefinitions = {
-        content: [
-          {
-            text: documentTitle,
-            style: 'title'
-          },
-          {
-            text: 'AI Research Assistant',
-            style: 'author'
-          },
-          {
-            text: 'MIFECO company mifecoinc@gmail.com',
-            style: 'author'
-          },
-          {
-            text: '',
-            pageBreak: 'before'
-          },
-          ...research.sections.map(section => [
-            {
-              text: section.title,
-              style: 'sectionHeader'
-            },
-            ...parseMarkdownToPdfContent(section.content || ''),
-            ...(section.subsections?.map(sub => [
-              {
-                text: sub.title,
-                style: 'subsectionHeader'
-              },
-              ...parseMarkdownToPdfContent(sub.content || '')
-            ]).flat() || [])
-          ]).flat()
-        ],
-        styles: {
-          title: {
-            fontSize: 24,
-            bold: true,
-            alignment: 'center',
-            margin: [0, 100, 0, 20]
-          },
-          author: {
-            fontSize: 14,
-            alignment: 'center',
-            margin: [0, 0, 0, 10]
-          },
-          sectionHeader: {
-            fontSize: 18,
-            bold: true,
-            margin: [0, 20, 0, 10]
-          },
-          subsectionHeader: {
-            fontSize: 16,
-            bold: true,
-            margin: [0, 15, 0, 10]
-          },
-          header1: {
-            fontSize: 20,
-            bold: true,
-            margin: [0, 20, 0, 10]
-          },
-          header2: {
-            fontSize: 18,
-            bold: true,
-            margin: [0, 15, 0, 10]
-          },
-          header3: {
-            fontSize: 16,
-            bold: true,
-            margin: [0, 10, 0, 10]
-          },
-          content: {
-            fontSize: 12,
-            margin: [0, 0, 0, 10],
-            lineHeight: 1.5
-          }
-        },
-        defaultStyle: {
-          font: 'Roboto',
-          fontSize: 12,
-          lineHeight: 1.5
-        }
-      };
-
-      const pdfDoc = pdfMake.createPdf(docDefinition);
-      pdfDoc.getBlob((blob: Blob) => {
-        saveAs(blob, 'research.pdf');
-      });
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      dispatch(setError('Failed to generate PDF'));
-    }
-  };
-
   const handleDownloadWord = async () => {
     try {
       if (!research.sections || research.sections.length === 0) {
@@ -644,77 +366,31 @@ export const ResearchPage: React.FC = () => {
         return;
       }
 
-      const documentTitle = extractDocumentTitle(research.researchTarget || '');
-      const doc = new Document({
-        sections: [{
-          properties: {},
-          children: [
-            // Title Page
-            new Paragraph({
-              text: documentTitle,
-              heading: HeadingLevel.TITLE,
-              spacing: { before: 400, after: 200 },
-              alignment: AlignmentType.CENTER
-            }),
-            new Paragraph({
-              text: 'AI Research Assistant',
-              spacing: { before: 200, after: 100 },
-              alignment: AlignmentType.CENTER
-            }),
-            new Paragraph({
-              text: 'MIFECO company mifecoinc@gmail.com',
-              spacing: { before: 100, after: 400 },
-              alignment: AlignmentType.CENTER
-            }),
-            // Content (new page)
-            new Paragraph({
-              text: '',
-              pageBreakBefore: true
-            }),
-            ...research.sections.flatMap(section => {
-              if (!section.content && (!section.subsections || section.subsections.length === 0)) {
-                return [];
-              }
-
-              const sectionContent = [];
-              if (section.content) {
-                sectionContent.push(
-                  new Paragraph({
-                    text: section.title,
-                    heading: HeadingLevel.HEADING_1,
-                    spacing: { before: 400, after: 200 }
-                  }),
-                  ...parseMarkdownToWordContent(section.content)
-                );
-              }
-
-              if (section.subsections) {
-                const subsectionsWithContent = section.subsections.filter(sub => sub.content);
-                if (subsectionsWithContent.length > 0) {
-                  sectionContent.push(
-                    ...subsectionsWithContent.flatMap(sub => [
-                      new Paragraph({
-                        text: sub.title,
-                        heading: HeadingLevel.HEADING_2,
-                        spacing: { before: 300, after: 200 }
-                      }),
-                      ...parseMarkdownToWordContent(sub.content || '')
-                    ])
-                  );
-                }
-              }
-
-              return sectionContent;
-            })
-          ]
-        }]
-      });
-
+      const doc = generateWordDocument(research.sections, research.researchTarget || '');
       const blob = await Packer.toBlob(doc);
       saveAs(blob, 'research.docx');
     } catch (error) {
       console.error('Error generating Word document:', error);
       dispatch(setError('Failed to generate Word document'));
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    try {
+      if (!research.sections || research.sections.length === 0) {
+        dispatch(setError('No content available to generate PDF'));
+        return;
+      }
+
+      const blob = await generatePdfDocument(
+        { title: research.researchTarget || '' },
+        research.sections,
+        []  // No references for now
+      );
+      saveAs(blob, 'research.pdf');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      dispatch(setError('Failed to generate PDF'));
     }
   };
 
