@@ -152,134 +152,130 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
   
   // Create title page
   const children = [
+    // Title Page
     new Paragraph({
       text: documentTitle,
       heading: HeadingLevel.TITLE,
       alignment: AlignmentType.CENTER,
       spacing: {
-        after: 400,
-        before: 400
+        before: 400,
+        after: 200
+      },
+      style: "Title",
+      run: {
+        size: 72 // 36pt = 72 half-points
       }
     }),
     new Paragraph({
-      text: "By Robert Maver",
+      text: "Written by the AI Researcher application",
       alignment: AlignmentType.CENTER,
       spacing: {
-        after: 400
+        before: 200,
+        after: 50
       }
     }),
     new Paragraph({
-      text: "",
+      text: "developed by MIFECOinc@gmail.com",
+      alignment: AlignmentType.CENTER,
       spacing: {
-        after: 400
+        before: 50,
+        after: 100
       }
     }),
     new Paragraph({
       text: currentDate,
       alignment: AlignmentType.CENTER,
       spacing: {
-        after: 400
+        before: 100,
+        after: 200
       }
     }),
-    // Add page break after title
+    // Page break before Table of Contents
     new Paragraph({
       text: '',
       pageBreakBefore: true
     }),
-    // Add Table of Contents title
+    // Table of Contents page
     new Paragraph({
-      text: "Table of Contents",
+      text: documentTitle,
       heading: HeadingLevel.HEADING_1,
       alignment: AlignmentType.CENTER,
       spacing: {
-        after: 400
+        before: 200,
+        after: 200
       }
     }),
-    // Add actual TOC field
+    new Paragraph({
+      text: '',
+      spacing: {
+        after: 200
+      }
+    }),
     new TableOfContents("Table of Contents", {
       hyperlink: true,
-      headingStyleRange: "1-2"
+      headingStyleRange: "1-3"
     }),
-    // Add page break after TOC
+    // Page break before content
     new Paragraph({
       text: '',
       pageBreakBefore: true
     })
   ];
 
-  // Add sections content (with proper headings for TOC)
-  sections.forEach((section) => {
+  // Add sections with proper heading levels
+  sections.forEach(section => {
     children.push(
       new Paragraph({
-        text: section.title,
+        text: `${section.number}. ${section.title}`,
         heading: HeadingLevel.HEADING_1,
-        spacing: { after: 300 }
-      }),
-      new Paragraph({
-        text: section.content,
-        spacing: { after: 300 }
+        spacing: {
+          before: 200,
+          after: 100
+        }
       })
     );
 
+    if (section.content) {
+      children.push(
+        new Paragraph({
+          text: section.content,
+          spacing: {
+            after: 100
+          }
+        })
+      );
+    }
+
     if (section.subsections) {
-      section.subsections.forEach((subsection) => {
+      section.subsections.forEach(subsection => {
         children.push(
           new Paragraph({
-            text: subsection.title,
+            text: `${subsection.number}. ${subsection.title}`,
             heading: HeadingLevel.HEADING_2,
-            spacing: { after: 200 }
-          }),
-          new Paragraph({
-            text: subsection.content,
-            spacing: { after: 200 }
+            spacing: {
+              before: 100,
+              after: 50
+            }
           })
         );
+
+        if (subsection.content) {
+          children.push(
+            new Paragraph({
+              text: subsection.content,
+              spacing: {
+                after: 50
+              }
+            })
+          );
+        }
       });
     }
   });
 
   return new Document({
-    styles: {
-      default: {
-        heading1: {
-          run: {
-            size: 36,
-            bold: true,
-          },
-          paragraph: {
-            spacing: { after: 300 }
-          }
-        }
-      },
-      paragraphStyles: [
-        {
-          id: "TOC1",
-          name: "TOC 1",
-          basedOn: "Normal",
-          next: "Normal",
-          run: {
-            size: 28
-          },
-          paragraph: {
-            spacing: { after: 100 }
-          }
-        },
-        {
-          id: "TOC2",
-          name: "TOC 2",
-          basedOn: "Normal",
-          next: "Normal",
-          run: {
-            size: 26
-          },
-          paragraph: {
-            spacing: { after: 100 },
-            indent: { left: 720 }
-          }
-        }
-      ]
-    },
     sections: [{
+      properties: {},
       children: children
     }]
   });
@@ -308,20 +304,28 @@ export const generatePdfDocument = async (
     });
     
     // Add title page
-    const titleWidth = boldFont.widthOfTextAtSize(documentTitle, 24);
+    const titleWidth = boldFont.widthOfTextAtSize(documentTitle, 36);
     page.drawText(documentTitle, {
       x: (page.getWidth() - titleWidth) / 2,
       y: page.getHeight() - 150,
-      size: 24,
+      size: 36,
       font: boldFont
     });
 
-    // Add author
-    const authorText = "By Robert Maver";
-    const authorWidth = font.widthOfTextAtSize(authorText, normalSize);
-    page.drawText(authorText, {
-      x: (page.getWidth() - authorWidth) / 2,
-      y: page.getHeight() - 200,
+    // Add author lines
+    const authorLine1 = "Written by the AI Researcher application";
+    const authorLine2 = "developed by MIFECOinc@gmail.com";
+    const authorWidth1 = font.widthOfTextAtSize(authorLine1, normalSize);
+    const authorWidth2 = font.widthOfTextAtSize(authorLine2, normalSize);
+    page.drawText(authorLine1, {
+      x: (page.getWidth() - authorWidth1) / 2,
+      y: page.getHeight() - 250,
+      size: normalSize,
+      font: font
+    });
+    page.drawText(authorLine2, {
+      x: (page.getWidth() - authorWidth2) / 2,
+      y: page.getHeight() - 280,
       size: normalSize,
       font: font
     });
@@ -330,7 +334,7 @@ export const generatePdfDocument = async (
     const dateWidth = font.widthOfTextAtSize(currentDate, normalSize);
     page.drawText(currentDate, {
       x: (page.getWidth() - dateWidth) / 2,
-      y: page.getHeight() - 250,
+      y: page.getHeight() - 350,
       size: normalSize,
       font: font
     });
@@ -339,77 +343,41 @@ export const generatePdfDocument = async (
     let tocPage = pdfDoc.addPage();
     let tocY = tocPage.getHeight() - 100;
   
-    // Add TOC header centered
-    const tocTitle = "Table of Contents";
-    const tocTitleWidth = boldFont.widthOfTextAtSize(tocTitle, 24);
-    tocPage.drawText(tocTitle, {
-      x: (tocPage.getWidth() - tocTitleWidth) / 2,
+    // Add document title to TOC page
+    const tocTitleWidth = boldFont.widthOfTextAtSize(documentTitle, 24);
+    tocPage.drawText(documentTitle, {
+      x: (page.getWidth() - tocTitleWidth) / 2,
       y: tocY,
       size: 24,
       font: boldFont
     });
-    tocY -= 80;
+    tocY -= 100;  // Space after title
 
-    // Track current page number for TOC
-    let currentPage = 3; // Start after title and TOC pages
-
-    // Add TOC entries with page numbers
-    sections.forEach((section, index) => {
-      const sectionText = `${index + 1}. ${section.title}`;
-      const pageText = `${currentPage}`;
-      
-      tocPage.drawText(sectionText, {
-        x: 50,
+    // Add section titles to TOC
+    for (const section of sections) {
+      const tocText = `${section.number}. ${section.title}`;
+      tocPage.drawText(tocText, {
+        x: 50,  // Indent from left
         y: tocY,
-        size: 14,
+        size: normalSize,
         font: boldFont
       });
-      
-      tocPage.drawText(pageText, {
-        x: tocPage.getWidth() - 50 - font.widthOfTextAtSize(pageText, 14),
-        y: tocY,
-        size: 14,
-        font: font
-      });
-      
-      tocY -= 40;
-      currentPage++;
+      tocY -= 30;  // Space between sections
 
+      // Add subsections if they exist
       if (section.subsections) {
-        section.subsections.forEach((subsection, subsectionIndex) => {
-          if (tocY < 50) {
-            tocPage = pdfDoc.addPage();
-            tocY = tocPage.getHeight() - 50;
-          }
-
-          const subsectionText = `    ${index + 1}.${subsectionIndex + 1}. ${subsection.title}`;
-          const subPageText = `${currentPage}`;
-          
-          tocPage.drawText(subsectionText, {
-            x: 70,
+        for (const subsection of section.subsections) {
+          const subText = `    ${subsection.number}. ${subsection.title}`;
+          tocPage.drawText(subText, {
+            x: 70,  // More indent for subsections
             y: tocY,
-            size: 12,
+            size: normalSize,
             font: font
           });
-          
-          tocPage.drawText(subPageText, {
-            x: tocPage.getWidth() - 50 - font.widthOfTextAtSize(subPageText, 12),
-            y: tocY,
-            size: 12,
-            font: font
-          });
-          
-          tocY -= 40;
-          currentPage++;
-        });
+          tocY -= 25;  // Slightly less space between subsections
+        }
       }
-
-      // Add new page if needed
-      if (tocY < 50) {
-        tocPage = pdfDoc.addPage();
-        tocY = tocPage.getHeight() - 50;
-      }
-    });
+    }
 
     // Start content on new page
     page = pdfDoc.addPage();

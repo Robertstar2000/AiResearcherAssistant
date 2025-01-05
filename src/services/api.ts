@@ -1,17 +1,16 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Groq from 'groq-sdk';
-import { z } from 'zod'; // Added for enhanced type validation
+import { z } from 'zod';
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-const TOKEN_RATE_LIMIT = 250000; // tokens per minute
+const TOKEN_RATE_LIMIT = 250000;
 const MAX_TOKENS_PER_REQUEST = 8000;
-const SAFETY_FACTOR = 1.5; // Account for both input and output tokens
+const SAFETY_FACTOR = 1.5;
 
 const calculateDelay = (tokensUsed: number) => {
-  // Calculate how many minutes we need to wait based on token rate limit
   const minutesNeeded = (tokensUsed * SAFETY_FACTOR) / TOKEN_RATE_LIMIT;
-  return Math.ceil(minutesNeeded * 60 * 1000); // Convert to milliseconds
+  return Math.ceil(minutesNeeded * 60 * 1000);
 };
 
 const callWithRetry = async <T>(
@@ -27,23 +26,19 @@ const callWithRetry = async <T>(
       console.error(`Attempt ${i + 1} failed:`, error);
       lastError = error;
 
-      // Check if it's a rate limit error and extract wait time
       if (error?.message?.includes('Rate limit reached')) {
         const waitTimeMatch = error.message.match(/try again in (\d+)m(\d+(\.\d+)?)s/);
         if (waitTimeMatch) {
           const minutes = parseInt(waitTimeMatch[1]);
           const seconds = parseFloat(waitTimeMatch[2]);
           const waitTimeMs = (minutes * 60 + seconds) * 1000;
-          // Add a small buffer to ensure we're past the rate limit
           await delay(waitTimeMs + 5000);
           continue;
         }
       }
 
-      // If not a rate limit error or couldn't parse wait time, use exponential backoff
       if (i < retries - 1) {
         const backoffDelay = initialDelayMs * Math.pow(2, i);
-        // Cap at 6 minutes
         const delayMs = Math.min(backoffDelay, 360000);
         await delay(delayMs);
       }
@@ -52,7 +47,6 @@ const callWithRetry = async <T>(
   throw lastError;
 };
 
-// Enhanced Error Handling
 export enum ResearchErrorType {
   GENERATION_ERROR = 'GENERATION_ERROR',
   NETWORK_ERROR = 'NETWORK_ERROR',
@@ -61,7 +55,6 @@ export enum ResearchErrorType {
   RATE_LIMIT_ERROR = 'RATE_LIMIT_ERROR'
 }
 
-// Advanced Error Class
 export class ResearchError extends Error {
   constructor(
     public readonly type: ResearchErrorType,
@@ -74,7 +67,6 @@ export class ResearchError extends Error {
 
   static fromError(error: unknown, type: ResearchErrorType = ResearchErrorType.GENERATION_ERROR): ResearchError {
     if (error instanceof ResearchError) return error;
-
     return new ResearchError(
       type, 
       error instanceof Error ? error.message : 'Unknown error occurred',
@@ -83,30 +75,18 @@ export class ResearchError extends Error {
   }
 }
 
-// Validation Schemas
 const ResearchConfigSchema = z.object({
   mode: z.enum(['basic', 'advanced', 'expert']),
   type: z.enum(['general', 'literature', 'experiment']),
   topic: z.string().min(3)
 });
 
-// Logging and Monitoring Service
 export class ErrorMonitoringService {
   static log(error: ResearchError) {
     console.error(`[${error.type}] ${error.message}`, error.details);
-    
-    // Placeholder for external monitoring service integration
-    // This could be replaced with Sentry, LogRocket, etc.
-    try {
-      // Example: Send error to monitoring service
-      // MonitoringService.captureException(error);
-    } catch (logError) {
-      console.error('Error logging failed', logError);
-    }
   }
 }
 
-// Configuration and Initialization
 export class ResearchApiConfig {
   private static instance: ResearchApiConfig;
   
@@ -114,7 +94,6 @@ export class ResearchApiConfig {
   public readonly groq: Groq;
 
   private constructor() {
-    // Secure configuration loading
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
     const groqApiKey = import.meta.env.VITE_GROQ_API_KEY;
@@ -127,7 +106,10 @@ export class ResearchApiConfig {
     }
 
     this.supabase = createClient(supabaseUrl, supabaseKey);
-    this.groq = new Groq({ apiKey: groqApiKey, dangerouslyAllowBrowser: true });
+    this.groq = new Groq({ 
+      apiKey: groqApiKey,
+      dangerouslyAllowBrowser: true
+    });
   }
 
   public static getInstance(): ResearchApiConfig {
@@ -138,7 +120,6 @@ export class ResearchApiConfig {
   }
 }
 
-// Advanced API Call Wrapper
 export async function safeApiCall<T>(
   fn: () => Promise<T>, 
   errorType: ResearchErrorType = ResearchErrorType.GENERATION_ERROR
@@ -152,7 +133,6 @@ export async function safeApiCall<T>(
   }
 }
 
-// Type-Safe API Services
 import { ResearchSection, ResearchMode, ResearchType } from '../types/research';
 
 interface ValidatedConfig {
@@ -163,98 +143,251 @@ interface ValidatedConfig {
 }
 
 export class ResearchApiService {
+  private config = ResearchApiConfig.getInstance();
   public readonly supabase: SupabaseClient;
   public readonly groq: Groq;
-
-  private config = ResearchApiConfig.getInstance();
 
   constructor() {
     this.supabase = this.config.supabase;
     this.groq = this.config.groq;
   }
 
-  // Unified Title Generation
   async generateTitle(
     prompt: string,
     mode: string,
-    type: string
+    type: string,
+    _userId?: string
   ): Promise<string> {
     return callWithRetry(async () => {
-      // Validate input
-      const validatedConfig = ResearchConfigSchema.parse({ 
-        topic: prompt, mode, type 
+      const validatedConfig = await this.validateConfig({ 
+        topic: prompt,
+        mode,
+        type,
+        researchTarget: prompt
       });
 
       const completion = await this.groq.chat.completions.create({
-        model: "llama-3.2-90b-vision-preview",
         messages: [
           {
             role: "system",
-            content: "You are an academic expert who specializes in creating research titles."
-          },
-          {
-            role: "user",
-            content: `Generate one and only one sentence with a period as an academic title using ${validatedConfig.mode} ${validatedConfig.type} research on: ${validatedConfig.topic} to describe what the research is about. Do not include an introduction, conclusion, or literature search. The title should be clear, concise, and focused on the topic ${validatedConfig.topic} to describe what the research is about. the Title MUST be one sentance and end with a period. You SHALL place no content before or after the tile sentance`
+            content: `You are an expert academic research title generator specializing in post-graduate level academic writing. Generate a sophisticated, precise, and comprehensive research title.
+
+TITLE REQUIREMENTS:
+1. Length: 12-20 words
+2. Structure: Main Title: Subtitle format
+3. Language Level: Post-graduate academic vocabulary
+4. Specificity: Must precisely indicate methodology and scope
+5. Format: Use proper capitalization for academic titles
+
+TITLE COMPONENTS MUST INCLUDE:
+1. Primary Research Focus
+2. Methodological Approach
+3. Theoretical Framework or Paradigm
+4. Scope or Context
+5. Key Variables or Phenomena
+
+STYLE GUIDELINES:
+1. Use sophisticated academic terminology
+2. Include methodological indicators
+3. Specify theoretical frameworks
+4. Indicate research scope
+5. Use precise technical vocabulary
+6. Incorporate field-specific terminology
+
+EXAMPLES BY TYPE:
+- General Research:
+  "Paradigmatic Shifts in Cognitive Neuroscience: A Longitudinal Analysis of Neural Plasticity in Adaptive Learning Mechanisms, 2015-2025"
+
+- Literature Review:
+  "Systematic Analysis of Quantum Computing Architectures: A Comprehensive Meta-Analysis of Scalability Parameters in Contemporary Quantum Systems"
+
+- Experimental:
+  "Quantitative Assessment of Neuroplastic Adaptations: A Multi-Modal Investigation of Synaptic Plasticity Using Advanced Imaging Techniques"
+
+For topic: "${validatedConfig.topic}"
+Type: ${validatedConfig.type}
+Level: ${validatedConfig.mode}`
           }
         ],
+        model: "llama-3.1-70b-versatile",
         temperature: 0.7,
-        max_tokens: 150,
+        max_tokens: 400,
         top_p: 1,
-        frequency_penalty: 0,
-        presence_penalty: 0
+        stop: null
       });
 
-      if (!completion.choices[0]?.message?.content) {
-        throw new Error('No response from OpenAI');
+      const title = completion.choices[0]?.message?.content?.trim() || '';
+
+      if (_userId) {
+        const { error: updateError } = await this.supabase
+          .from('research')
+          .update({ title })
+          .eq('user_id', _userId);
+
+        if (updateError) {
+          console.error('Error storing title:', updateError);
+        }
       }
 
-      return completion.choices[0].message.content.trim();
+      return title;
     });
   }
 
-  // Comprehensive Outline Generation
   async generateDetailedOutline(
     topic: string, 
     mode: string, 
     type: string,
-    sectionCount: number
+    _userId?: string
   ): Promise<string> {
-    return callWithRetry(async () => {
-      const { mode: validMode, type: validType, topic: validTopic } = ResearchConfigSchema.parse({
-        mode: mode.toLowerCase(),
-        type: type.toLowerCase(),
-        topic
-      });
+    const validatedConfig = await this.validateConfig({ 
+      topic, 
+      mode, 
+      type,
+      researchTarget: topic
+    });
+    
+    return await safeApiCall(async () => {
+      const sectionCount = mode === 'basic' ? 4 : mode === 'advanced' ? 16 : 30;
+      let typeSpecificInstructions = '';
+      
+      switch(type) {
+        case 'general':
+          typeSpecificInstructions = `
+Required Sections Structure (each main section must have 3-4 detailed subsections):
 
-      const prompt = `Generate a detailed research outline for a ${validType} research on "${validTopic}". 
-        The outline should have exactly ${sectionCount} main sections, appropriate for a ${validMode} level research paper.
-        Each section should be unique and have a descriptive title that clearly indicates its content.
-        Follow these exact formatting rules:
-        1. Main sections should be numbered like "1.", "2.", "3." followed by the title
-        2. Subsections should be numbered like "1.1", "1.2", "1.3" followed by the title
-        3. Each section and subsection should start on a new line
-        4. Content should be on the line immediately after its section/subsection title
-        5. Do not use the word "Section" in any headers
-        6. Do not add any extra numbering or prefixes
-        Example format:
-        1. Introduction
-        1.1 Background
-        Brief background content here
-        1.2 Objectives
-        Research objectives content here`;
+1. Comprehensive Introduction and Research Context
+[Detailed overview of the research landscape and significance]
+1.1 Historical Evolution and Development of the Research Field
+[Trace the progression and key developments]
+1.2 Contemporary Challenges and Knowledge Gaps in Current Understanding
+[Identify specific problems and missing knowledge]
+1.3 Research Significance and Potential Impact on the Field
+[Explain broader implications and contributions]
+1.4 Theoretical Framework and Conceptual Foundations
+[Establish the theoretical basis]
+
+2. In-depth Analysis of Existing Literature and Current State of Knowledge
+[Comprehensive review of current research landscape]
+2.1 Critical Evaluation of Foundational Research Studies
+[Analyze seminal works and their impact]
+2.2 Emerging Trends and Recent Developments in the Field
+[Examine latest research directions]
+2.3 Contradictions and Debates in Current Literature
+[Explore conflicting viewpoints]
+2.4 Synthesis of Key Theoretical Frameworks
+[Connect different theoretical approaches]
+
+[Continue this pattern for remaining sections...]`;
+          break;
+        case 'literature':
+          typeSpecificInstructions = `
+Required Sections Structure (each main section must have 3-4 detailed subsections):
+
+1. Comprehensive Overview of Literature Review Scope and Objectives
+[Detailed framework of the review's purpose and methodology]
+1.1 Historical Context and Evolution of Research Questions
+[Trace development of key questions]
+1.2 Current Debates and Theoretical Controversies
+[Examine ongoing scholarly discussions]
+1.3 Methodological Approaches in Existing Literature
+[Analyze research methods used]
+1.4 Gaps and Limitations in Current Understanding
+[Identify knowledge gaps]
+
+2. Critical Analysis of Theoretical Frameworks and Models
+[In-depth examination of theoretical foundations]
+2.1 Evolution of Theoretical Perspectives Over Time
+[Track changes in theoretical understanding]
+2.2 Competing Theoretical Models and Their Applications
+[Compare different theoretical approaches]
+2.3 Integration of Cross-disciplinary Theoretical Insights
+[Explore interdisciplinary connections]
+2.4 Emerging Theoretical Developments and Innovations
+[Examine new theoretical directions]
+
+[Continue this pattern for remaining sections...]`;
+          break;
+        case 'experiment':
+          typeSpecificInstructions = `
+Required Sections Structure (each main section must have 3-4 detailed subsections):
+
+1. Comprehensive Experimental Framework and Research Context
+[Detailed overview of experimental design and rationale]
+1.1 Theoretical Foundations and Research Hypotheses Development
+[Establish theoretical basis for experiments]
+1.2 Innovation and Significance in Experimental Approach
+[Explain unique aspects of methodology]
+1.3 Integration with Existing Experimental Literature
+[Connect to previous research]
+1.4 Potential Impact and Applications of Experimental Findings
+[Project broader implications]
+
+2. Detailed Experimental Design and Methodological Framework
+[Comprehensive explanation of experimental setup]
+2.1 Advanced Variable Control and Measurement Techniques
+[Detail precise control methods]
+2.2 Novel Instrumentation and Technical Specifications
+[Describe specialized equipment]
+2.3 Innovative Data Collection Protocols and Procedures
+[Explain unique data gathering]
+2.4 Quality Assurance and Validation Mechanisms
+[Detail accuracy measures]
+
+[Continue this pattern for remaining sections...]`;
+          break;
+      }
 
       const completion = await this.groq.chat.completions.create({
-        messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.2-90b-vision-preview',
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert academic research assistant creating a detailed, hierarchical outline. Your task is to create a comprehensive outline for a ${validatedConfig.mode} ${validatedConfig.type} research paper with exactly ${sectionCount} total sections (including ALL subsections).
+
+CRITICAL FORMATTING REQUIREMENTS:
+1. EVERY main section MUST have 3-4 detailed subsections that explore different aspects
+2. Main section titles must be long and descriptive (4-8 words)
+3. Subsection titles must be detailed (5-10 words) and explore unique aspects
+4. Each title must clearly indicate its specific content focus
+5. Use proper outline format: 1., 1.1, 1.2, 1.3, etc.
+6. Each section AND subsection needs a detailed description (2-3 lines)
+7. All descriptions must be unique and delve deep into the topic
+8. Main sections should follow the structure below exactly
+9. Never use generic words like "Section" or "Analysis" alone
+
+TITLE FORMAT EXAMPLE:
+1. Comprehensive Analysis of Neural Network Architecture Evolution
+[Detailed examination of how neural network designs have progressed...]
+1.1 Historical Development of Foundational Neural Network Models
+[Traces the progression from early perceptrons through modern architectures...]
+1.2 Critical Comparison of Contemporary Architecture Paradigms
+[Analyzes differences between CNN, RNN, and transformer approaches...]
+1.3 Impact of Hardware Advances on Architecture Innovation
+[Examines how GPU/TPU developments influenced network design...]
+1.4 Future Directions in Neural Architecture Development
+[Projects emerging trends in architecture research...]
+
+${typeSpecificInstructions}`
+          }
+        ],
+        model: "llama-3.1-70b-versatile",
         temperature: 0.7,
         max_tokens: 8000,
+        top_p: 1,
+        stop: null
       });
 
-      return completion.choices[0]?.message?.content || '';
+      const outline = completion.choices[0]?.message?.content;
+      if (!outline) {
+        throw new ResearchError(
+          ResearchErrorType.GENERATION_ERROR,
+          'Failed to generate outline'
+        );
+      }
+
+      return outline;
     });
   }
 
-  // Outline Generation
   async generateOutline(
     researchTarget: string,
     mode: ResearchMode,
@@ -274,51 +407,127 @@ export class ResearchApiService {
       switch(type) {
         case 'general':
           typeSpecificInstructions = `
-Create a general research paper outline with standard academic sections.
-Include an introduction, methodology, results, and conclusion.
-Each main section should have 2-3 subsections.`;
+Required Sections Structure (each main section must have 3-4 detailed subsections):
+
+1. Comprehensive Introduction and Research Context
+[Detailed overview of the research landscape and significance]
+1.1 Historical Evolution and Development of the Research Field
+[Trace the progression and key developments]
+1.2 Contemporary Challenges and Knowledge Gaps in Current Understanding
+[Identify specific problems and missing knowledge]
+1.3 Research Significance and Potential Impact on the Field
+[Explain broader implications and contributions]
+1.4 Theoretical Framework and Conceptual Foundations
+[Establish the theoretical basis]
+
+2. In-depth Analysis of Existing Literature and Current State of Knowledge
+[Comprehensive review of current research landscape]
+2.1 Critical Evaluation of Foundational Research Studies
+[Analyze seminal works and their impact]
+2.2 Emerging Trends and Recent Developments in the Field
+[Examine latest research directions]
+2.3 Contradictions and Debates in Current Literature
+[Explore conflicting viewpoints]
+2.4 Synthesis of Key Theoretical Frameworks
+[Connect different theoretical approaches]
+
+[Continue this pattern for remaining sections...]`;
           break;
         case 'literature':
           typeSpecificInstructions = `
-Create a literature review paper outline focusing on analyzing existing research.
-Include sections for different themes, methodological approaches, and gaps in research.
-Each main section should analyze a different aspect of the literature.`;
+Required Sections Structure (each main section must have 3-4 detailed subsections):
+
+1. Comprehensive Overview of Literature Review Scope and Objectives
+[Detailed framework of the review's purpose and methodology]
+1.1 Historical Context and Evolution of Research Questions
+[Trace development of key questions]
+1.2 Current Debates and Theoretical Controversies
+[Examine ongoing scholarly discussions]
+1.3 Methodological Approaches in Existing Literature
+[Analyze research methods used]
+1.4 Gaps and Limitations in Current Understanding
+[Identify knowledge gaps]
+
+2. Critical Analysis of Theoretical Frameworks and Models
+[In-depth examination of theoretical foundations]
+2.1 Evolution of Theoretical Perspectives Over Time
+[Track changes in theoretical understanding]
+2.2 Competing Theoretical Models and Their Applications
+[Compare different theoretical approaches]
+2.3 Integration of Cross-disciplinary Theoretical Insights
+[Explore interdisciplinary connections]
+2.4 Emerging Theoretical Developments and Innovations
+[Examine new theoretical directions]
+
+[Continue this pattern for remaining sections...]`;
           break;
         case 'experiment':
           typeSpecificInstructions = `
-Create an experimental research paper outline with detailed methodology.
-Include hypothesis, experimental design, data collection, and analysis sections.
-Each main section should detail a specific aspect of the experiment.`;
+Required Sections Structure (each main section must have 3-4 detailed subsections):
+
+1. Comprehensive Experimental Framework and Research Context
+[Detailed overview of experimental design and rationale]
+1.1 Theoretical Foundations and Research Hypotheses Development
+[Establish theoretical basis for experiments]
+1.2 Innovation and Significance in Experimental Approach
+[Explain unique aspects of methodology]
+1.3 Integration with Existing Experimental Literature
+[Connect to previous research]
+1.4 Potential Impact and Applications of Experimental Findings
+[Project broader implications]
+
+2. Detailed Experimental Design and Methodological Framework
+[Comprehensive explanation of experimental setup]
+2.1 Advanced Variable Control and Measurement Techniques
+[Detail precise control methods]
+2.2 Novel Instrumentation and Technical Specifications
+[Describe specialized equipment]
+2.3 Innovative Data Collection Protocols and Procedures
+[Explain unique data gathering]
+2.4 Quality Assurance and Validation Mechanisms
+[Detail accuracy measures]
+
+[Continue this pattern for remaining sections...]`;
           break;
       }
 
       const completion = await this.groq.chat.completions.create({
-        model: "llama-3.2-90b-vision-preview",
         messages: [
           {
             role: "system",
-            content: `You are an expert academic research assistant. Create a detailed outline for a ${validatedConfig.mode} ${validatedConfig.type} research paper with exactly ${sectionCount} total sections (including subsections).
+            content: `You are an expert academic research assistant creating a detailed, hierarchical outline. Your task is to create a comprehensive outline for a ${validatedConfig.mode} ${validatedConfig.type} research paper with exactly ${sectionCount} total sections (including ALL subsections).
 
-Format Requirements:
-1. Use ONLY numbered sections (1., 2., 3., etc.) for main sections
-2. Use decimal notation (1.1, 1.2, etc.) for subsections
-3. Each section must have a clear title after the number
-4. Each section must have a brief description on the next line
-5. Main sections must be clearly distinguished from subsections
-6. Ensure proper hierarchical structure
+CRITICAL FORMATTING REQUIREMENTS:
+1. EVERY main section MUST have 3-4 detailed subsections that explore different aspects
+2. Main section titles must be long and descriptive (4-8 words)
+3. Subsection titles must be detailed (5-10 words) and explore unique aspects
+4. Each title must clearly indicate its specific content focus
+5. Use proper outline format: 1., 1.1, 1.2, 1.3, etc.
+6. Each section AND subsection needs a detailed description (2-3 lines)
+7. All descriptions must be unique and delve deep into the topic
+8. Main sections should follow the structure below exactly
+9. Never use generic words like "Section" or "Analysis" alone
+
+TITLE FORMAT EXAMPLE:
+1. Comprehensive Analysis of Neural Network Architecture Evolution
+[Detailed examination of how neural network designs have progressed...]
+1.1 Historical Development of Foundational Neural Network Models
+[Traces the progression from early perceptrons through modern architectures...]
+1.2 Critical Comparison of Contemporary Architecture Paradigms
+[Analyzes differences between CNN, RNN, and transformer approaches...]
+1.3 Impact of Hardware Advances on Architecture Innovation
+[Examines how GPU/TPU developments influenced network design...]
+1.4 Future Directions in Neural Architecture Development
+[Projects emerging trends in architecture research...]
 
 ${typeSpecificInstructions}`
-          },
-          {
-            role: "user",
-            content: `Generate a research outline for: ${validatedConfig.researchTarget}`
           }
         ],
+        model: "llama-3.1-70b-versatile",
         temperature: 0.7,
-        max_tokens: 2000,
+        max_tokens: 8000,
         top_p: 1,
-        frequency_penalty: 0,
-        presence_penalty: 0
+        stop: null
       });
 
       if (!completion.choices[0]?.message?.content) {
@@ -329,7 +538,6 @@ ${typeSpecificInstructions}`
     });
   }
 
-  // Batch Section Generation
   async generateSectionBatch(
     sections: ResearchSection[],
     researchTarget: string,
@@ -345,28 +553,67 @@ ${typeSpecificInstructions}`
         sections
       });
 
+      let retryCount = 0;
+      const INITIAL_DELAY_MS = 10000;
+      const MAX_RETRY_COUNT = 8;
+
+      async function adaptiveDelay(retryCount: number = 0) {
+        const delay = INITIAL_DELAY_MS * Math.pow(2, Math.min(retryCount, MAX_RETRY_COUNT));
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+
+      await adaptiveDelay(retryCount);
+
       const completion = await this.groq.chat.completions.create({
-        model: "llama-3.2-90b-vision-preview",
         messages: [
           {
             role: "system",
-            content: "You are an academic expert who specializes in research paper outlines and content generation."
+            content: `You are an academic expert who specializes in research paper outlines and content generation.
+
+Instructions for citations and references:
+1. Use in-text citations in APA format: (Author, Year) or (Author et al., Year)
+2. Each citation must correspond to a reference in the References section
+3. References should be in APA format:
+   Author, A. A. (Year). Title of work. Publisher/Journal.
+4. Place references at the end of the content in a "References" section
+5. Ensure all citations have matching references and vice versa
+6. Each section and subsection must start on a new line
+7. Each section and subsection must have a descriptive title
+8. Each section and subsection must have a brief description on the next line
+9. Do not use the word "Section" in any headers
+10. Do not add any extra numbering or prefixes
+11. Each section description must be notably unique to all other sections
+12. Format Example:
+   1. Introduction
+   Brief overview of the research topic and its significance
+   1.1 Background
+   Historical context and development of the field
+   1.2 Research Objectives
+   Clear statement of research goals and expected outcomes
+
+Keep the content focused and concise while maintaining academic quality.`
           },
           {
             role: "user",
-            content: `Generate detailed content with citations in markup format for a ${validatedConfig.mode} ${validatedConfig.type} research paper about: ${validatedConfig.researchTarget}
-Do not include an introduction, conclusion, or literature search.
+            content: `Generate detailed content with citations in APA format for a ${validatedConfig.mode} ${validatedConfig.type} research paper about: ${validatedConfig.researchTarget}
+
+Requirements:
+1. Include relevant in-text citations
+2. Add a References section at the end
+3. Ensure all citations have corresponding references
+4. Focus on academic quality and accuracy
+
 Section: ${sections[0].title}
 Description: ${sections[0].content}
 
 Keep the content focused and concise while maintaining academic quality.`
           }
         ],
-        temperature: 0.7,
-        max_tokens: MAX_TOKENS_PER_REQUEST,
+        model: "mixtral-8x7b-32768",
+        temperature: 0.3,
+        max_tokens: 8000,
         top_p: 1,
-        frequency_penalty: 0,
-        presence_penalty: 0
+        stream: false
       });
 
       const content = completion.choices[0]?.message?.content || '';
@@ -383,107 +630,37 @@ Keep the content focused and concise while maintaining academic quality.`
     });
   }
 
-  // Target Generation
-  async generateTarget(
-    topic: string,
-    mode: ResearchMode,
-    type: ResearchType
-  ): Promise<string> {
-    return callWithRetry(async () => {
-      const completion = await this.groq.chat.completions.create({
-        model: "llama-3.2-90b-vision-preview",
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert academic research assistant. Your task is to refine and formalize research topics into clear, academically-structured research targets.
-For a ${mode} ${type} paper, transform the given topic into a well-defined research target that:
-1. Uses precise academic language
-2. Has a clear scope and focus
-3. Is appropriately complex for the specified mode and type
-4. Can be researched academically`
-          },
-          {
-            role: "user",
-            content: `Transform this topic into a formal research target: ${topic}`
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: 1000,
-        top_p: 1,
-        frequency_penalty: 0,
-        presence_penalty: 0
-      });
-
-      if (!completion.choices[0]?.message?.content) {
-        throw new Error('No response from AI');
-      }
-
-      return completion.choices[0].message.content.trim();
-    });
-  }
-
-  // Research Saving Mechanism
-  async saveResearch(
-    userId: string, 
-    researchData: Record<string, unknown>
-  ): Promise<string | undefined> {
-    return safeApiCall(async () => {
-      const { data, error } = await this.supabase
-        .from('research')
-        .insert({ 
-          user_id: userId, 
-          ...researchData 
-        })
-        .select('id')
-        .single();
-
-      if (error) throw error;
-      return data?.id;
-    }, ResearchErrorType.NETWORK_ERROR);
-  }
-
-  // Research History Retrieval
-  async getResearchHistory(userId: string): Promise<any[]> {
-    return safeApiCall(async () => {
-      const { data, error } = await this.supabase
-        .from('research')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data || [];
-    }, ResearchErrorType.NETWORK_ERROR);
-  }
-
   private async validateConfig(config: {
     topic: string;
-    mode: ResearchMode;
-    type: ResearchType;
+    mode: string;
+    type: string;
     researchTarget: string;
     sections?: ResearchSection[];
   }): Promise<ValidatedConfig> {
-    const validatedConfig = ResearchConfigSchema.parse({ 
-      topic: config.topic,
-      mode: config.mode,
-      type: config.type
-    });
-
-    // Only validate sections if they are provided (for section generation)
-    if (config.sections !== undefined && config.sections.length === 0) {
+    const { mode, type, topic } = config;
+    
+    try {
+      const validatedData = ResearchConfigSchema.parse({
+        mode: mode.toLowerCase(),
+        type: type.toLowerCase(),
+        topic
+      });
+      
+      return {
+        mode: validatedData.mode,
+        type: validatedData.type,
+        topic: validatedData.topic,
+        researchTarget: topic
+      };
+    } catch (error) {
       throw new ResearchError(
-        ResearchErrorType.VALIDATION_ERROR, 
-        'No sections provided for generation'
+        ResearchErrorType.VALIDATION_ERROR,
+        'Invalid configuration',
+        { error }
       );
     }
-
-    return {
-      ...validatedConfig,
-      researchTarget: config.researchTarget
-    };
   }
 }
 
-// Export for use in application
 export const researchApi = new ResearchApiService();
 export const supabase = researchApi.supabase;
