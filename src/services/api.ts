@@ -173,23 +173,17 @@ export class ResearchApiService {
             content: `You are an expert academic research title generator specializing in post-graduate level academic writing. Generate a sophisticated, precise, and comprehensive research title.
 
 TITLE REQUIREMENTS:
-1. Length: 12-20 words
+1. Length: 12-20 words with no additional comments
 2. Structure: Main Title: Subtitle format
 3. Language Level: Post-graduate academic vocabulary
 4. Specificity: Must precisely indicate methodology and scope
 5. Format: Use proper capitalization for academic titles
 
-TITLE COMPONENTS MUST INCLUDE:
+TITLE  MUST INCLUDE:
 1. Primary Research Focus
-2. Methodological Approach
-3. Theoretical Framework or Paradigm
-4. Scope or Context
-5. Key Variables or Phenomena
 
 STYLE GUIDELINES:
 1. Use sophisticated academic terminology
-2. Include methodological indicators
-3. Specify theoretical frameworks
 4. Indicate research scope
 5. Use precise technical vocabulary
 6. Incorporate field-specific terminology
@@ -211,7 +205,7 @@ Level: ${validatedConfig.mode}`
         ],
         model: "llama-3.1-70b-versatile",
         temperature: 0.7,
-        max_tokens: 400,
+        max_tokens: 50,
         top_p: 1,
         stop: null
       });
@@ -253,7 +247,7 @@ Level: ${validatedConfig.mode}`
       switch(type) {
         case 'general':
           typeSpecificInstructions = `
-Required Sections Structure (each main section must have 3-4 detailed subsections):
+Example Sections Structure (each main section must have 3-4 detailed subsections):
 
 1. Comprehensive Introduction and Research Context
 [Detailed overview of the research landscape and significance]
@@ -281,7 +275,7 @@ Required Sections Structure (each main section must have 3-4 detailed subsection
           break;
         case 'literature':
           typeSpecificInstructions = `
-Required Sections Structure (each main section must have 3-4 detailed subsections):
+Example Sections Structure (each main section must have 3-4 detailed subsections):
 
 1. Comprehensive Overview of Literature Review Scope and Objectives
 [Detailed framework of the review's purpose and methodology]
@@ -309,7 +303,7 @@ Required Sections Structure (each main section must have 3-4 detailed subsection
           break;
         case 'experiment':
           typeSpecificInstructions = `
-Required Sections Structure (each main section must have 3-4 detailed subsections):
+Example Sections Structure (each main section must have 3-4 detailed subsections):
 
 1. Comprehensive Experimental Framework and Research Context
 [Detailed overview of experimental design and rationale]
@@ -345,7 +339,7 @@ Required Sections Structure (each main section must have 3-4 detailed subsection
 
 CRITICAL FORMATTING REQUIREMENTS:
 1. EVERY main section MUST have 3-4 detailed subsections that explore different aspects
-2. Main section titles must be long and descriptive (4-8 words)
+2. Main section titles must written in achedemic languagebe long and descriptive (4-8 words)
 3. Subsection titles must be detailed (5-10 words) and explore unique aspects
 4. Each title must clearly indicate its specific content focus
 5. Use proper outline format: 1., 1.1, 1.2, 1.3, etc.
@@ -407,7 +401,7 @@ ${typeSpecificInstructions}`
       switch(type) {
         case 'general':
           typeSpecificInstructions = `
-Required Sections Structure (each main section must have 3-4 detailed subsections):
+Example Sections Structure (each main section must have 3-4 detailed subsections):
 
 1. Comprehensive Introduction and Research Context
 [Detailed overview of the research landscape and significance]
@@ -435,7 +429,7 @@ Required Sections Structure (each main section must have 3-4 detailed subsection
           break;
         case 'literature':
           typeSpecificInstructions = `
-Required Sections Structure (each main section must have 3-4 detailed subsections):
+Example Sections Structure (each main section must have 3-4 detailed subsections):
 
 1. Comprehensive Overview of Literature Review Scope and Objectives
 [Detailed framework of the review's purpose and methodology]
@@ -463,7 +457,7 @@ Required Sections Structure (each main section must have 3-4 detailed subsection
           break;
         case 'experiment':
           typeSpecificInstructions = `
-Required Sections Structure (each main section must have 3-4 detailed subsections):
+Example Sections Structure (each main section must have 3-4 detailed subsections):
 
 1. Comprehensive Experimental Framework and Research Context
 [Detailed overview of experimental design and rationale]
@@ -568,45 +562,48 @@ ${typeSpecificInstructions}`
         messages: [
           {
             role: "system",
-            content: `You are an academic expert who specializes in research paper outlines and content generation.
+            content: `You are a distinguished academic scholar with extensive expertise in research methodology and academic writing. Your task is to generate sophisticated, post-graduate level content that demonstrates deep analytical thinking and scholarly rigor.
 
-Instructions for citations and references:
-1. Use in-text citations in APA format: (Author, Year) or (Author et al., Year)
-2. Each citation must correspond to a reference in the References section
-3. References should be in APA format:
-   Author, A. A. (Year). Title of work. Publisher/Journal.
-4. Place references at the end of the content in a "References" section
-5. Ensure all citations have matching references and vice versa
-6. Each section and subsection must start on a new line
-7. Each section and subsection must have a descriptive title
-8. Each section and subsection must have a brief description on the next line
-9. Do not use the word "Section" in any headers
-10. Do not add any extra numbering or prefixes
-11. Each section description must be notably unique to all other sections
-12. Format Example:
-   1. Introduction
-   Brief overview of the research topic and its significance
-   1.1 Background
-   Historical context and development of the field
-   1.2 Research Objectives
-   Clear statement of research goals and expected outcomes
+Instructions for Academic Writing Style:
+1. Employ advanced academic vocabulary and complex sentence structures appropriate for post-graduate level discourse
+2. Maintain a formal, scholarly tone throughout the content
+3. Develop arguments with nuanced analysis and critical evaluation
+4. Integrate theoretical frameworks with empirical evidence
+5. Demonstrate comprehensive understanding of interdisciplinary perspectives
 
-Keep the content focused and concise while maintaining academic quality.`
+Citation and Reference Guidelines:
+1. Integrate in-text citations seamlessly using APA format: (Author, Year) or (Author et al., Year)
+2. Ensure each citation corresponds to a complete reference entry
+3. Format references in APA style with meticulous attention to detail
+4. Place references in a dedicated "References" section at the conclusion
+
+Content Structure Requirements:
+1. Begin each section with sophisticated, descriptive content that establishes context
+2. Do not include the sectin number or the section title in the content
+3. Develop arguments progressively, building complexity through logical progression
+4. Integrate multiple theoretical perspectives and empirical evidence
+5. Maintain coherent thematic connections throughout the content
+6. Conclude sections with synthesis of key arguments and implications
+7. Do not include any section numbers or titles in the content
+8. Focus on developing the content itself, not its structural organization
+
+Write in a verbose, academically rigorous style that demonstrates expert-level understanding of the subject matter.`
           },
           {
             role: "user",
-            content: `Generate detailed content with citations in APA format for a ${validatedConfig.mode} ${validatedConfig.type} research paper about: ${validatedConfig.researchTarget}
+            content: `Generate comprehensive, post-graduate level content with rigorous academic citations for a ${validatedConfig.mode} ${validatedConfig.type} research paper examining: ${validatedConfig.researchTarget}
+
+Focus area: ${sections[0].content}
 
 Requirements:
-1. Include relevant in-text citations
-2. Add a References section at the end
-3. Ensure all citations have corresponding references
-4. Focus on academic quality and accuracy
+1. Maintain sophisticated academic discourse appropriate for post-graduate level
+2. Integrate relevant theoretical frameworks and empirical evidence
+3. Include extensive scholarly citations
+4. Develop nuanced arguments and critical analysis
+5. Conclude with a complete References section in APA format
+6. Do not include any section numbers or titles in the content
 
-Section: ${sections[0].title}
-Description: ${sections[0].content}
-
-Keep the content focused and concise while maintaining academic quality.`
+Emphasize depth of analysis while maintaining scholarly rigor.`
           }
         ],
         model: "mixtral-8x7b-32768",
