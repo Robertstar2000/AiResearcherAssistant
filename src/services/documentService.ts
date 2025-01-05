@@ -197,7 +197,7 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
     }),
     // Table of Contents page
     new Paragraph({
-      text: documentTitle,
+      text: "Table of Contents",
       heading: HeadingLevel.HEADING_1,
       alignment: AlignmentType.CENTER,
       spacing: {
@@ -205,13 +205,7 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
         after: 200
       }
     }),
-    new Paragraph({
-      text: '',
-      spacing: {
-        after: 200
-      }
-    }),
-    new TableOfContents("Table of Contents", {
+    new TableOfContents("", {
       hyperlink: true,
       headingStyleRange: "1-3"
     }),
@@ -226,7 +220,7 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
   sections.forEach(section => {
     children.push(
       new Paragraph({
-        text: `${section.number}. ${section.title}`,
+        text: `${section.number} ${section.title}`,
         heading: HeadingLevel.HEADING_1,
         spacing: {
           before: 200,
@@ -250,7 +244,7 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
       section.subsections.forEach(subsection => {
         children.push(
           new Paragraph({
-            text: `${subsection.number}. ${subsection.title}`,
+            text: `${subsection.number} ${subsection.title}`,
             heading: HeadingLevel.HEADING_2,
             spacing: {
               before: 100,
@@ -343,9 +337,10 @@ export const generatePdfDocument = async (
     let tocPage = pdfDoc.addPage();
     let tocY = tocPage.getHeight() - 100;
   
-    // Add document title to TOC page
-    const tocTitleWidth = boldFont.widthOfTextAtSize(documentTitle, 24);
-    tocPage.drawText(documentTitle, {
+    // Add TOC title
+    const tocTitle = "Table of Contents";
+    const tocTitleWidth = boldFont.widthOfTextAtSize(tocTitle, 24);
+    tocPage.drawText(tocTitle, {
       x: (page.getWidth() - tocTitleWidth) / 2,
       y: tocY,
       size: 24,
@@ -355,7 +350,7 @@ export const generatePdfDocument = async (
 
     // Add section titles to TOC
     for (const section of sections) {
-      const tocText = `${section.number}. ${section.title}`;
+      const tocText = `${section.number} ${section.title}`;
       tocPage.drawText(tocText, {
         x: 50,  // Indent from left
         y: tocY,
@@ -367,7 +362,7 @@ export const generatePdfDocument = async (
       // Add subsections if they exist
       if (section.subsections) {
         for (const subsection of section.subsections) {
-          const subText = `    ${subsection.number}. ${subsection.title}`;
+          const subText = `${subsection.number} ${subsection.title}`;
           tocPage.drawText(subText, {
             x: 70,  // More indent for subsections
             y: tocY,
@@ -381,108 +376,127 @@ export const generatePdfDocument = async (
 
     // Start content on new page
     page = pdfDoc.addPage();
+    let contentY = page.getHeight() - 50;
+    const margin = 50;
+    const pageWidth = page.getWidth() - 2 * margin;
 
     // Add content pages
     for (const section of sections) {
-      if (page.getY() < 50) {
-        page = pdfDoc.addPage();
-      }
-
       // Add section title
-      const sectionTitle = `${section.number}. ${section.title}`;
+      const sectionTitle = `${section.number} ${section.title}`;
       page.drawText(sectionTitle, {
-        x: 50,
-        y: page.getHeight() - 150,
-        font: boldFont,
-        size: 16
+        x: margin,
+        y: contentY,
+        size: 16,
+        font: boldFont
       });
+      contentY -= 30;
 
       // Add section content
       if (section.content) {
-        const lines = wrapText(section.content, font, normalSize, page.getWidth() - 100);
+        const lines = wrapText(section.content, font, normalSize, pageWidth);
         for (const line of lines) {
-          if (page.getY() < 50) {
+          if (contentY < 50) {
             page = pdfDoc.addPage();
+            contentY = page.getHeight() - 50;
           }
-
           page.drawText(line, {
-            x: 50,
-            y: page.getY() - 20,
-            font: font,
-            size: normalSize
+            x: margin,
+            y: contentY,
+            size: normalSize,
+            font: font
           });
+          contentY -= 20;
         }
+        contentY -= 10; // Extra space after content
       }
 
       // Add subsections
       if (section.subsections) {
         for (const subsection of section.subsections) {
-          if (page.getY() < 50) {
+          if (contentY < 50) {
             page = pdfDoc.addPage();
+            contentY = page.getHeight() - 50;
           }
 
           // Add subsection title
-          page.drawText(subsection.title, {
-            x: 50,
-            y: page.getY() - 20,
-            font: boldFont,
-            size: 14
+          const subsectionTitle = `${subsection.number} ${subsection.title}`;
+          page.drawText(subsectionTitle, {
+            x: margin + 20, // Indent subsection
+            y: contentY,
+            size: 14,
+            font: boldFont
           });
+          contentY -= 25;
 
           // Add subsection content
           if (subsection.content) {
-            const lines = wrapText(subsection.content, font, normalSize, page.getWidth() - 100);
+            const lines = wrapText(subsection.content, font, normalSize, pageWidth - 40); // Account for indent
             for (const line of lines) {
-              if (page.getY() < 50) {
+              if (contentY < 50) {
                 page = pdfDoc.addPage();
+                contentY = page.getHeight() - 50;
               }
-
               page.drawText(line, {
-                x: 50,
-                y: page.getY() - 20,
-                font: font,
-                size: normalSize
+                x: margin + 20, // Keep same indent as title
+                y: contentY,
+                size: normalSize,
+                font: font
               });
+              contentY -= 20;
             }
+            contentY -= 10; // Extra space after content
           }
         }
       }
-    }
 
-    // Add references if any
-    if (references.length > 0) {
-      if (page.getY() < 100) {
+      // Add extra space between sections
+      contentY -= 30;
+      if (contentY < 100) {
         page = pdfDoc.addPage();
-      }
-
-      page.drawText('References', {
-        x: 50,
-        y: page.getY() - 20,
-        font: boldFont,
-        size: 16
-      });
-
-      for (const ref of references) {
-        const lines = wrapText(ref, font, normalSize, page.getWidth() - 100);
-        for (const line of lines) {
-          if (page.getY() < 50) {
-            page = pdfDoc.addPage();
-          }
-
-          page.drawText(line, {
-            x: 50,
-            y: page.getY() - 20,
-            font: font,
-            size: normalSize
-          });
-        }
+        contentY = page.getHeight() - 50;
       }
     }
 
-    return new Blob([await pdfDoc.save()], { type: 'application/pdf' });
+    // Add references if provided
+    if (references && references.length > 0) {
+      page = pdfDoc.addPage();
+      contentY = page.getHeight() - 50;
+
+      // Add References title
+      page.drawText('References', {
+        x: margin,
+        y: contentY,
+        size: 16,
+        font: boldFont
+      });
+      contentY -= 30;
+
+      // Add each reference
+      for (const ref of references) {
+        const lines = wrapText(ref, font, normalSize, pageWidth);
+        for (const line of lines) {
+          if (contentY < 50) {
+            page = pdfDoc.addPage();
+            contentY = page.getHeight() - 50;
+          }
+          page.drawText(line, {
+            x: margin,
+            y: contentY,
+            size: normalSize,
+            font: font
+          });
+          contentY -= 20;
+        }
+        contentY -= 10;
+      }
+    }
+
+    const pdfBytes = await pdfDoc.save();
+    return new Blob([pdfBytes], { type: 'application/pdf' });
   } catch (error) {
-    console.error('Error generating PDF document:', error);
-    throw error;
+    console.error('Error generating PDF:', error);
+    throw new ResearchException(ResearchError.GENERATION_ERROR, 'Failed to generate PDF document');
   }
 };
 
