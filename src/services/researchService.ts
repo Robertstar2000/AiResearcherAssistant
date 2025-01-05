@@ -20,7 +20,7 @@ async function createResearchOutline(
     }
     
     // Then generate the outline
-    const outline = await researchApi.generateDetailedOutline(topic, mode, type, undefined);
+    const outline = await researchApi.generateDetailedOutline(topic, mode, type);
     
     // Parse the outline into ResearchSection array
     const parsedSections: ResearchSection[] = parseOutline(outline);
