@@ -142,7 +142,7 @@ export const deleteResearchEntry = async (id: string): Promise<void> => {
 export async function createUser(userData: any): Promise<void> {
   try {
     const { error } = await supabase
-      .from('users')
+      .from('AiResearcherAssistant')
       .insert([userData]);
 
     if (error) {
@@ -163,9 +163,15 @@ export async function createUser(userData: any): Promise<void> {
 
 export async function authenticateUser(credentials: any): Promise<any> {
   try {
-    const { data, error } = await supabase.auth.signInWithPassword(credentials);
+    const { data, error } = await supabase
+      .from('AiResearcherAssistant')
+      .select('*')
+      .ilike('e_mail', credentials.email)
+      .eq('PassWord', credentials.password)
+      .single();
 
     if (error) {
+      console.error('Login error:', error);
       throw new ResearchException(
         ResearchError.DATABASE_ERROR,
         `Authentication failed: ${error.message}`,
@@ -173,8 +179,22 @@ export async function authenticateUser(credentials: any): Promise<any> {
       );
     }
 
-    return data;
+    if (!data) {
+      throw new ResearchException(
+        ResearchError.DATABASE_ERROR,
+        'Invalid email or password'
+      );
+    }
+
+    return {
+      id: data.id,
+      email: data.e_mail,
+      name: data["User-Name"],
+      occupation: data.Occupation,
+      geolocation: data.Location
+    };
   } catch (error) {
+    console.error('Authentication error:', error);
     throw new ResearchException(
       ResearchError.DATABASE_ERROR,
       error instanceof Error ? error.message : 'Authentication failed',
