@@ -80,6 +80,8 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
 
 export async function authenticateUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
+    console.log('Attempting login with:', { email: credentials.email }); // Debug log
+    
     const { data: profile, error } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .select('*')
@@ -87,13 +89,24 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
       .eq('PassWord', credentials.password)
       .single();
 
-    if (error || !profile) {
+    if (error) {
+      console.error('Login error:', error);
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
         'Invalid email or password'
       );
     }
 
+    if (!profile) {
+      console.error('No profile found for email:', credentials.email);
+      throw new ResearchException(
+        ResearchError.AUTH_ERROR,
+        'Invalid email or password'
+      );
+    }
+
+    console.log('Login successful for:', { email: credentials.email }); // Debug log
+    
     return {
       id: profile.id,
       email: profile.e_mail,

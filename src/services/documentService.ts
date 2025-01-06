@@ -202,12 +202,16 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
       alignment: AlignmentType.CENTER,
       spacing: {
         before: 200,
-        after: 200
+        after: 100
       }
     }),
     new TableOfContents("", {
       hyperlink: true,
-      headingStyleRange: "1-3"
+      headingStyleRange: "1-3",
+      stylesWithLevels: [
+        { level: 1, styleName: "Heading1" },
+        { level: 2, styleName: "Heading2" }
+      ]
     }),
     // Page break before content
     new Paragraph({
@@ -218,10 +222,12 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
 
   // Add sections with proper heading levels
   sections.forEach(section => {
+    // Add section title
     children.push(
       new Paragraph({
         text: `${section.number} ${section.title}`,
         heading: HeadingLevel.HEADING_1,
+        style: "Heading1",
         spacing: {
           before: 200,
           after: 100
@@ -229,23 +235,31 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
       })
     );
 
+    // Add section content with preserved formatting
     if (section.content) {
-      children.push(
-        new Paragraph({
-          text: section.content,
-          spacing: {
-            after: 100
-          }
-        })
-      );
+      const paragraphs = section.content.split('\n').filter(p => p.trim());
+      paragraphs.forEach(p => {
+        children.push(
+          new Paragraph({
+            text: p.trim(),
+            spacing: {
+              before: 20,
+              after: 20
+            }
+          })
+        );
+      });
     }
 
+    // Add subsections
     if (section.subsections) {
       section.subsections.forEach(subsection => {
+        // Add subsection title
         children.push(
           new Paragraph({
             text: `${subsection.number} ${subsection.title}`,
             heading: HeadingLevel.HEADING_2,
+            style: "Heading2",
             spacing: {
               before: 100,
               after: 50
@@ -253,15 +267,20 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
           })
         );
 
+        // Add subsection content with preserved formatting
         if (subsection.content) {
-          children.push(
-            new Paragraph({
-              text: subsection.content,
-              spacing: {
-                after: 50
-              }
-            })
-          );
+          const paragraphs = subsection.content.split('\n').filter(p => p.trim());
+          paragraphs.forEach(p => {
+            children.push(
+              new Paragraph({
+                text: p.trim(),
+                spacing: {
+                  before: 20,
+                  after: 20
+                }
+              })
+            );
+          });
         }
       });
     }
@@ -278,7 +297,7 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
 export const generatePdfDocument = async (
   metadata: { title: string },
   sections: ResearchSection[],
-  references: string[]
+  _references: string[]
 ): Promise<Blob> => {
   try {
     const pdfDoc = await PDFDocument.create();
@@ -288,6 +307,11 @@ export const generatePdfDocument = async (
     // Create pages and add content
     let page = pdfDoc.addPage();
     const normalSize = 12;
+    const titleSize = 24;
+    const headingSize = 16;
+    const subheadingSize = 14;
+    const margin = 50;
+    const pageWidth = page.getWidth() - 2 * margin;
     
     // Extract and format title
     const documentTitle = extractDocumentTitle(metadata.title);
@@ -298,11 +322,11 @@ export const generatePdfDocument = async (
     });
     
     // Add title page
-    const titleWidth = boldFont.widthOfTextAtSize(documentTitle, 36);
+    const titleWidth = boldFont.widthOfTextAtSize(documentTitle, titleSize);
     page.drawText(documentTitle, {
       x: (page.getWidth() - titleWidth) / 2,
       y: page.getHeight() - 150,
-      size: 36,
+      size: titleSize,
       font: boldFont
     });
 
@@ -334,161 +358,159 @@ export const generatePdfDocument = async (
     });
 
     // Add Table of Contents page
-    let tocPage = pdfDoc.addPage();
-    let tocY = tocPage.getHeight() - 100;
-  
+    page = pdfDoc.addPage();
+    let y = page.getHeight() - 100;
+
     // Add TOC title
     const tocTitle = "Table of Contents";
-    const tocTitleWidth = boldFont.widthOfTextAtSize(tocTitle, 24);
-    tocPage.drawText(tocTitle, {
+    const tocTitleWidth = boldFont.widthOfTextAtSize(tocTitle, titleSize);
+    page.drawText(tocTitle, {
       x: (page.getWidth() - tocTitleWidth) / 2,
-      y: tocY,
-      size: 24,
+      y,
+      size: titleSize,
       font: boldFont
     });
-    tocY -= 100;  // Space after title
+    y -= 60;
 
-    // Add section titles to TOC
+    // Add section titles to TOC with page numbers
+    let pageNum = 3; // Start from page 3 (after title and TOC)
     for (const section of sections) {
       const tocText = `${section.number} ${section.title}`;
-      tocPage.drawText(tocText, {
-        x: 50,  // Indent from left
-        y: tocY,
+      const pageText = pageNum.toString();
+      const pageWidth = font.widthOfTextAtSize(pageText, normalSize);
+      
+      page.drawText(tocText, {
+        x: margin,
+        y,
         size: normalSize,
         font: boldFont
       });
-      tocY -= 30;  // Space between sections
+      
+      page.drawText(pageText, {
+        x: page.getWidth() - margin - pageWidth,
+        y,
+        size: normalSize,
+        font: font
+      });
+      
+      y -= 30;
+      pageNum++;
 
-      // Add subsections if they exist
       if (section.subsections) {
         for (const subsection of section.subsections) {
+          if (y < 50) {
+            page = pdfDoc.addPage();
+            y = page.getHeight() - 50;
+          }
+
           const subText = `${subsection.number} ${subsection.title}`;
-          tocPage.drawText(subText, {
-            x: 70,  // More indent for subsections
-            y: tocY,
+          const subPageText = pageNum.toString();
+          const subPageWidth = font.widthOfTextAtSize(subPageText, normalSize);
+
+          page.drawText(subText, {
+            x: margin + 30,
+            y,
             size: normalSize,
             font: font
           });
-          tocY -= 25;  // Slightly less space between subsections
+
+          page.drawText(subPageText, {
+            x: page.getWidth() - margin - subPageWidth,
+            y,
+            size: normalSize,
+            font: font
+          });
+
+          y -= 25;
+          pageNum++;
         }
+      }
+
+      if (y < 50) {
+        page = pdfDoc.addPage();
+        y = page.getHeight() - 50;
       }
     }
 
-    // Start content on new page
-    page = pdfDoc.addPage();
-    let contentY = page.getHeight() - 50;
-    const margin = 50;
-    const pageWidth = page.getWidth() - 2 * margin;
-
-    // Add content pages
+    // Content pages
     for (const section of sections) {
+      page = pdfDoc.addPage();
+      y = page.getHeight() - margin;
+
       // Add section title
       const sectionTitle = `${section.number} ${section.title}`;
       page.drawText(sectionTitle, {
         x: margin,
-        y: contentY,
-        size: 16,
+        y,
+        size: headingSize,
         font: boldFont
       });
-      contentY -= 30;
+      y -= 40;
 
-      // Add section content
+      // Add section content with preserved formatting
       if (section.content) {
-        const lines = wrapText(section.content, font, normalSize, pageWidth);
-        for (const line of lines) {
-          if (contentY < 50) {
+        const paragraphs = section.content.split('\n').filter(p => p.trim());
+        for (const paragraph of paragraphs) {
+          if (y < 50) {
             page = pdfDoc.addPage();
-            contentY = page.getHeight() - 50;
+            y = page.getHeight() - margin;
           }
-          page.drawText(line, {
-            x: margin,
-            y: contentY,
-            size: normalSize,
-            font: font
-          });
-          contentY -= 20;
+
+          const lines = wrapText(paragraph.trim(), font, normalSize, pageWidth);
+          for (const line of lines) {
+            page.drawText(line, {
+              x: margin,
+              y,
+              size: normalSize,
+              font: font
+            });
+            y -= 20;
+          }
+          y -= 20; // Extra space between paragraphs
         }
-        contentY -= 10; // Extra space after content
       }
 
       // Add subsections
       if (section.subsections) {
         for (const subsection of section.subsections) {
-          if (contentY < 50) {
+          if (y < 100) {
             page = pdfDoc.addPage();
-            contentY = page.getHeight() - 50;
+            y = page.getHeight() - margin;
           }
 
           // Add subsection title
           const subsectionTitle = `${subsection.number} ${subsection.title}`;
           page.drawText(subsectionTitle, {
-            x: margin + 20, // Indent subsection
-            y: contentY,
-            size: 14,
+            x: margin,
+            y,
+            size: subheadingSize,
             font: boldFont
           });
-          contentY -= 25;
+          y -= 30;
 
-          // Add subsection content
+          // Add subsection content with preserved formatting
           if (subsection.content) {
-            const lines = wrapText(subsection.content, font, normalSize, pageWidth - 40); // Account for indent
-            for (const line of lines) {
-              if (contentY < 50) {
+            const paragraphs = subsection.content.split('\n').filter(p => p.trim());
+            for (const paragraph of paragraphs) {
+              if (y < 50) {
                 page = pdfDoc.addPage();
-                contentY = page.getHeight() - 50;
+                y = page.getHeight() - margin;
               }
-              page.drawText(line, {
-                x: margin + 20, // Keep same indent as title
-                y: contentY,
-                size: normalSize,
-                font: font
-              });
-              contentY -= 20;
+
+              const lines = wrapText(paragraph.trim(), font, normalSize, pageWidth);
+              for (const line of lines) {
+                page.drawText(line, {
+                  x: margin,
+                  y,
+                  size: normalSize,
+                  font: font
+                });
+                y -= 20;
+              }
+              y -= 20; // Extra space between paragraphs
             }
-            contentY -= 10; // Extra space after content
           }
         }
-      }
-
-      // Add extra space between sections
-      contentY -= 30;
-      if (contentY < 100) {
-        page = pdfDoc.addPage();
-        contentY = page.getHeight() - 50;
-      }
-    }
-
-    // Add references if provided
-    if (references && references.length > 0) {
-      page = pdfDoc.addPage();
-      contentY = page.getHeight() - 50;
-
-      // Add References title
-      page.drawText('References', {
-        x: margin,
-        y: contentY,
-        size: 16,
-        font: boldFont
-      });
-      contentY -= 30;
-
-      // Add each reference
-      for (const ref of references) {
-        const lines = wrapText(ref, font, normalSize, pageWidth);
-        for (const line of lines) {
-          if (contentY < 50) {
-            page = pdfDoc.addPage();
-            contentY = page.getHeight() - 50;
-          }
-          page.drawText(line, {
-            x: margin,
-            y: contentY,
-            size: normalSize,
-            font: font
-          });
-          contentY -= 20;
-        }
-        contentY -= 10;
       }
     }
 

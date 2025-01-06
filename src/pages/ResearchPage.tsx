@@ -142,6 +142,8 @@ export const ResearchPage: React.FC = () => {
 
       if (parsedSections.length > 0) {
         dispatch(setSections(parsedSections));
+        console.log('Updated research sections:', parsedSections);
+        console.log('Contents of research.sections:', research.sections); // Added logging statement
         setProgressState({
           progress: 100,
           message: 'Research outline generated successfully!',
@@ -312,6 +314,8 @@ export const ResearchPage: React.FC = () => {
 
       if (parsedSections.length > 0) {
         dispatch(setSections(parsedSections));
+        console.log('Updated research sections:', parsedSections);
+        console.log('Contents of research.sections:', research.sections); // Added logging statement
         setProgressState({
           progress: 100,
           message: 'Outline generated successfully!',
@@ -366,7 +370,17 @@ export const ResearchPage: React.FC = () => {
         return;
       }
 
-      const doc = generateWordDocument(research.sections, research.researchTarget || '');
+      // Get the sections from the Generated Research Content view
+      const formattedSections = research.sections.map(section => ({
+        ...section,
+        content: section.content?.trim() || '',
+        subsections: section.subsections?.map(sub => ({
+          ...sub,
+          content: sub.content?.trim() || ''
+        })) || []
+      }));
+
+      const doc = generateWordDocument(formattedSections, research.researchTarget || '');
       const blob = await Packer.toBlob(doc);
       saveAs(blob, 'research.docx');
     } catch (error) {
@@ -382,9 +396,19 @@ export const ResearchPage: React.FC = () => {
         return;
       }
 
+      // Get the sections from the Generated Research Content view
+      const formattedSections = research.sections.map(section => ({
+        ...section,
+        content: section.content?.trim() || '',
+        subsections: section.subsections?.map(sub => ({
+          ...sub,
+          content: sub.content?.trim() || ''
+        })) || []
+      }));
+
       const blob = await generatePdfDocument(
         { title: research.researchTarget || '' },
-        research.sections,
+        formattedSections,
         []  // No references for now
       );
       saveAs(blob, 'research.pdf');
