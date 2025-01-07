@@ -335,13 +335,13 @@ Example Sections Structure (each main section must have 3-4 detailed subsections
         messages: [
           {
             role: "system",
-            content: `You are an expert academic research assistant creating a detailed, hierarchical outline. Your task is to create a comprehensive outline for a ${validatedConfig.mode} ${validatedConfig.type} research paper with exactly ${sectionCount} total sections (including ALL subsections).
+            content: `You are an expert academic research assistant creating a detailed, hierarchical outline. Your task is to create a comprehensive outline for a ${validatedConfig.mode} ${validatedConfig.type} research paper focused on the research target: "${validatedConfig.researchTarget}" with exactly ${sectionCount} total sections (including ALL subsections).
 
 CRITICAL FORMATTING REQUIREMENTS:
 1. EVERY main section MUST have 3-4 detailed subsections that explore different aspects
-2. Main section titles must written in achedemic languagebe long and descriptive (4-8 words)
+2. Main section titles must be unique, written in academic language, be long and descriptive (4-8 words), and incorporate aspects of the research target
 3. Subsection titles must be detailed (5-10 words) and explore unique aspects
-4. Each title must clearly indicate its specific content focus
+4. Each title must clearly indicate its specific content focus and not duplicate concepts from other sections
 5. Use proper outline format: 1., 1.1, 1.2, 1.3, etc.
 6. Each section AND subsection needs a detailed description (2-3 lines)
 7. All descriptions must be unique and delve deep into the topic
@@ -489,13 +489,13 @@ Example Sections Structure (each main section must have 3-4 detailed subsections
         messages: [
           {
             role: "system",
-            content: `You are an expert academic research assistant creating a detailed, hierarchical outline. Your task is to create a comprehensive outline for a ${validatedConfig.mode} ${validatedConfig.type} research paper with exactly ${sectionCount} total sections (including ALL subsections).
+            content: `You are an expert academic research assistant creating a detailed, hierarchical outline. Your task is to create a comprehensive outline for a ${validatedConfig.mode} ${validatedConfig.type} research paper focused on the research target: "${researchTarget}" with exactly ${sectionCount} total sections (including ALL subsections).
 
 CRITICAL FORMATTING REQUIREMENTS:
 1. EVERY main section MUST have 3-4 detailed subsections that explore different aspects
-2. Main section titles must be long and descriptive (4-8 words)
+2. Main section titles must be unique, written in academic language, be long and descriptive (4-8 words), and incorporate aspects of the research target
 3. Subsection titles must be detailed (5-10 words) and explore unique aspects
-4. Each title must clearly indicate its specific content focus
+4. Each title must clearly indicate its specific content focus and not duplicate concepts from other sections
 5. Use proper outline format: 1., 1.1, 1.2, 1.3, etc.
 6. Each section AND subsection needs a detailed description (2-3 lines)
 7. All descriptions must be unique and delve deep into the topic

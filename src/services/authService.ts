@@ -25,13 +25,17 @@ interface AuthCredentials {
 
 export async function createUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
+    // Normalize email and trim password
+    const normalizedEmail = credentials.email.toLowerCase().trim();
+    const trimmedPassword = credentials.password.trim();
+
     // Create profile directly in the database
     const { data: profile, error: profileError } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .insert({
-        e_mail: credentials.email,
+        e_mail: normalizedEmail,
         "User-Name": credentials.metadata?.name || '',
-        PassWord: credentials.password,
+        PassWord: trimmedPassword,
         Occupation: credentials.metadata?.occupation || '',
         Location: credentials.metadata?.geolocation || '',
         title: '',
@@ -80,13 +84,17 @@ export async function createUser(credentials: AuthCredentials): Promise<AuthUser
 
 export async function authenticateUser(credentials: AuthCredentials): Promise<AuthUser> {
   try {
-    console.log('Attempting login with:', { email: credentials.email }); // Debug log
+    // Normalize email and trim password
+    const normalizedEmail = credentials.email.toLowerCase().trim();
+    const trimmedPassword = credentials.password.trim();
+    
+    console.log('Attempting login with:', { email: normalizedEmail }); // Debug log
     
     const { data: profile, error } = await researchApi.supabase
       .from('AiResearcherAssistant')
-      .select('*')
-      .ilike('e_mail', credentials.email)
-      .eq('PassWord', credentials.password)
+      .select()
+      .filter('e_mail', 'eq', normalizedEmail)
+      .filter('PassWord', 'eq', trimmedPassword)
       .single();
 
     if (error) {
@@ -98,14 +106,14 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
     }
 
     if (!profile) {
-      console.error('No profile found for email:', credentials.email);
+      console.error('No profile found for email:', normalizedEmail);
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
         'Invalid email or password'
       );
     }
 
-    console.log('Login successful for:', { email: credentials.email }); // Debug log
+    console.log('Login successful for:', { email: normalizedEmail }); // Debug log
     
     return {
       id: profile.id,
