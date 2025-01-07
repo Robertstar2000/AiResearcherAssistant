@@ -322,13 +322,19 @@ export const generatePdfDocument = async (
     });
     
     // Add title page
-    const titleWidth = boldFont.widthOfTextAtSize(documentTitle, titleSize);
-    page.drawText(documentTitle, {
-      x: (page.getWidth() - titleWidth) / 2,
-      y: page.getHeight() - 150,
-      size: titleSize,
-      font: boldFont
-    });
+    const titleLines = wrapText(documentTitle, boldFont, titleSize, pageWidth);
+    let titleY = page.getHeight() - 150;
+    
+    for (const line of titleLines) {
+      const titleWidth = boldFont.widthOfTextAtSize(line, titleSize);
+      page.drawText(line, {
+        x: (page.getWidth() - titleWidth) / 2,
+        y: titleY,
+        size: titleSize,
+        font: boldFont
+      });
+      titleY -= titleSize * 1.5; // Add some spacing between title lines
+    }
 
     // Add author lines
     const authorLine1 = "Written by the AI Researcher application";
