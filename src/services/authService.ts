@@ -92,9 +92,9 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
     
     const { data: profile, error } = await researchApi.supabase
       .from('AiResearcherAssistant')
-      .select()
-      .filter('e_mail', 'eq', normalizedEmail)
-      .filter('PassWord', 'eq', trimmedPassword)
+      .select('*')
+      .eq('e_mail', normalizedEmail)
+      .eq('PassWord', trimmedPassword)
       .single();
 
     if (error) {
