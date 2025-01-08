@@ -1,4 +1,14 @@
-import { Document, Paragraph, HeadingLevel, AlignmentType, TableOfContents } from 'docx';
+import { 
+  Document, 
+  Paragraph, 
+  HeadingLevel, 
+  AlignmentType, 
+  TableOfContents, 
+  PageNumber,
+  Footer,
+  TextRun,
+  NumberFormat
+} from 'docx';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { ResearchSection } from '../types/research';
 
@@ -205,7 +215,7 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
         after: 100
       }
     }),
-    new TableOfContents("", {
+    new TableOfContents("Table of Contents", {
       hyperlink: true,
       headingStyleRange: "1-3",
       stylesWithLevels: [
@@ -286,10 +296,35 @@ export const generateWordDocument = (sections: ResearchSection[], title: string)
     }
   });
 
+  // Create footer with page numbers
+  const footer = new Footer({
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({
+            children: [PageNumber.CURRENT],
+          })
+        ]
+      })
+    ],
+  });
+
   return new Document({
     sections: [{
-      properties: {},
-      children: children
+      properties: {
+        type: "nextPage",
+        page: {
+          pageNumbers: {
+            start: 1,
+            formatType: NumberFormat.DECIMAL,
+          }
+        }
+      },
+      children: children,
+      footers: {
+        default: footer
+      }
     }]
   });
 };

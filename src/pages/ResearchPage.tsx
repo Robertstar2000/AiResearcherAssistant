@@ -598,8 +598,6 @@ export const ResearchPage: React.FC = () => {
         value={research.researchTarget}
         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
           dispatch(setResearchTarget(e.target.value));
-          setTargetGenerated(false);
-          setResearchGenerated(false);
         }}
       />
       <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
@@ -613,11 +611,11 @@ export const ResearchPage: React.FC = () => {
         <Button
           variant="contained"
           onClick={handleGenerateOutline}
-          disabled={!targetGenerated || isGenerating}
+          disabled={(!targetGenerated && !research.researchTarget) || isGenerating}
           sx={{
-            backgroundColor: targetGenerated ? 'primary.main' : 'grey.500',
+            backgroundColor: (targetGenerated || research.researchTarget) ? 'primary.main' : 'grey.500',
             '&:hover': {
-              backgroundColor: targetGenerated ? 'primary.dark' : 'grey.600',
+              backgroundColor: (targetGenerated || research.researchTarget) ? 'primary.dark' : 'grey.600',
             },
           }}
         >
