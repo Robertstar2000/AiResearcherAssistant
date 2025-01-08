@@ -90,28 +90,31 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
     
     console.log('Attempting login with:', { email: normalizedEmail }); // Debug log
     
-    const { data: profile, error } = await researchApi.supabase
+    const { data: profiles, error: queryError } = await researchApi.supabase
       .from('AiResearcherAssistant')
       .select('*')
       .eq('e_mail', normalizedEmail)
-      .eq('PassWord', trimmedPassword)
-      .single();
+      .eq('PassWord', trimmedPassword);
 
-    if (error) {
-      console.error('Login error:', error);
+    if (queryError) {
+      console.error('Login query error:', queryError);
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
         'Invalid email or password'
       );
     }
 
-    if (!profile) {
+    // Handle case of no results or multiple results
+    if (!profiles || profiles.length === 0) {
       console.error('No profile found for email:', normalizedEmail);
       throw new ResearchException(
         ResearchError.AUTH_ERROR,
         'Invalid email or password'
       );
     }
+
+    // Use the first matching profile
+    const profile = profiles[0];
 
     console.log('Login successful for:', { email: normalizedEmail }); // Debug log
     
