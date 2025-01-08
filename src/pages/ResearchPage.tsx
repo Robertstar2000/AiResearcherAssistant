@@ -611,11 +611,11 @@ export const ResearchPage: React.FC = () => {
         <Button
           variant="contained"
           onClick={handleGenerateOutline}
-          disabled={(!targetGenerated && !research.researchTarget) || isGenerating}
+          disabled={!research.researchTarget || isGenerating}
           sx={{
-            backgroundColor: (targetGenerated || research.researchTarget) ? 'primary.main' : 'grey.500',
+            backgroundColor: research.researchTarget ? 'primary.main' : 'grey.500',
             '&:hover': {
-              backgroundColor: (targetGenerated || research.researchTarget) ? 'primary.dark' : 'grey.600',
+              backgroundColor: research.researchTarget ? 'primary.dark' : 'grey.600',
             },
           }}
         >
