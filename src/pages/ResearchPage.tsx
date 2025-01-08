@@ -48,7 +48,6 @@ export const ResearchPage: React.FC = () => {
     message: '',
   });
   const [isGenerating, setIsGenerating] = useState(false);
-  const [targetGenerated, setTargetGenerated] = useState(false);
   const [researchGenerated, setResearchGenerated] = useState(false);
 
   const handleDocumentGeneration = async () => {
@@ -150,7 +149,6 @@ export const ResearchPage: React.FC = () => {
           progress: 100,
           message: 'Research outline generated successfully!',
         });
-        setTargetGenerated(true);
       } else {
         throw new Error('No sections were parsed from the outline');
       }
@@ -355,7 +353,6 @@ export const ResearchPage: React.FC = () => {
         progress: 100,
         message: 'Research target generated successfully!',
       });
-      setTargetGenerated(true);
       setResearchGenerated(false);
     } catch (error) {
       console.error('Error generating target:', error);
