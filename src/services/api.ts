@@ -548,7 +548,7 @@ ${typeSpecificInstructions}`
       });
 
       let retryCount = 0;
-      const INITIAL_DELAY_MS = 10000;
+      const INITIAL_DELAY_MS = 15000;
       const MAX_RETRY_COUNT = 8;
 
       async function adaptiveDelay(retryCount: number = 0) {

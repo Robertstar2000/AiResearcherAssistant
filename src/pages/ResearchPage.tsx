@@ -15,7 +15,7 @@ import {
   SelectChangeEvent,
 } from '@mui/material';
 import { Packer } from 'docx';
-import pdfMake from 'pdfmake/build/pdfmake';
+import * as pdfMake from 'pdfmake/build/pdfmake';
 import * as pdfFonts from 'pdfmake/build/vfs_fonts';
 import { saveAs } from 'file-saver';
 import { ResearchSection } from '../types/research';
@@ -33,8 +33,10 @@ import { generateResearchContent } from '../services/researchService';
 import { convertToMarkdown, parseMarkdownToDocx, generateWordDocument, generatePdfDocument } from '../services/documentService';
 
 // Initialize pdfMake with fonts
-if ((pdfFonts as any).pdfMake?.vfs) {
-  (pdfMake as any).vfs = (pdfFonts as any).pdfMake.vfs;
+const pdfMakeVfs = (pdfFonts as any).pdfMake?.vfs;
+if (pdfMakeVfs) {
+  const pdfMakeInstance = pdfMake as any;
+  pdfMakeInstance.vfs = pdfMakeVfs;
 }
 
 export const ResearchPage: React.FC = () => {
@@ -371,10 +373,10 @@ export const ResearchPage: React.FC = () => {
       }
 
       // Get the sections from the Generated Research Content view
-      const formattedSections = research.sections.map(section => ({
+      const formattedSections = research.sections.map((section: ResearchSection) => ({
         ...section,
         content: section.content?.trim() || '',
-        subsections: section.subsections?.map(sub => ({
+        subsections: section.subsections?.map((sub: ResearchSection) => ({
           ...sub,
           content: sub.content?.trim() || ''
         })) || []
@@ -397,10 +399,10 @@ export const ResearchPage: React.FC = () => {
       }
 
       // Get the sections from the Generated Research Content view
-      const formattedSections = research.sections.map(section => ({
+      const formattedSections = research.sections.map((section: ResearchSection) => ({
         ...section,
         content: section.content?.trim() || '',
-        subsections: section.subsections?.map(sub => ({
+        subsections: section.subsections?.map((sub: ResearchSection) => ({
           ...sub,
           content: sub.content?.trim() || ''
         })) || []
@@ -478,7 +480,7 @@ export const ResearchPage: React.FC = () => {
         <Typography variant="h6" gutterBottom>
           Research Outline
         </Typography>
-        {research.sections.map((section) => (
+        {research.sections.map((section: ResearchSection) => (
           <Box key={section.number} sx={{ mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 'bold', ml: 2 }}>
               {section.number} {section.title}
@@ -488,7 +490,7 @@ export const ResearchPage: React.FC = () => {
                 {section.content}
               </Typography>
             )}
-            {section.subsections?.map((sub) => (
+            {section.subsections?.map((sub: ResearchSection) => (
               <Box key={sub.number} sx={{ ml: 4, mt: 1 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
                   {sub.number} {sub.title}
@@ -514,7 +516,7 @@ export const ResearchPage: React.FC = () => {
         <Typography variant="h6" gutterBottom>
           Generated Research Content
         </Typography>
-        {research.sections.map((section) => (
+        {research.sections.map((section: ResearchSection) => (
           <Box key={section.number} sx={{ mb: 4 }}>
             <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
               {section.number} {section.title}
@@ -524,7 +526,7 @@ export const ResearchPage: React.FC = () => {
                 {section.content}
               </Typography>
             )}
-            {section.subsections?.map((sub) => (
+            {section.subsections?.map((sub: ResearchSection) => (
               <Box key={sub.number} sx={{ mt: 3, ml: 3 }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
                   {sub.number} {sub.title}
